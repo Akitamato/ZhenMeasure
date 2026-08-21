@@ -1,0 +1,7 @@
+﻿step,n_removed,n_removed_animals,associated_animal_ids
+keep_specified_ids,0,0,""
+missing_id_or_date,0,0,""
+duplicate_records,7632,0,9.82091E+14;699b78b7-0c70-4ae2-ab86-2d616dd829b8
+incomplete_data,20106,3,9.82091E+14;984000005031795;02ac8702-f3a9-4b8f-b337-b4e668387389
+continuity_removed_records,0,0,""
+logic_invalid,0,0,""

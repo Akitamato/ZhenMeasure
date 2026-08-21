@@ -1,0 +1,306 @@
+﻿diff --git "a/V\351\241\271\347\233\256\346\265\213\350\257\225\344\270\216\345\274\200\345\217\221/\351\241\271\347\233\256\346\234\254\344\275\223/ZhenMeasure/R/zhenm_config_defaults.R" "b/V\351\241\271\347\233\256\346\265\213\350\257\225\344\270\216\345\274\200\345\217\221/\351\241\271\347\233\256\346\234\254\344\275\223/ZhenMeasure/R/zhenm_config_defaults.R"
+index 7f0318b..25394e0 100644
+--- "a/V\351\241\271\347\233\256\346\265\213\350\257\225\344\270\216\345\274\200\345\217\221/\351\241\271\347\233\256\346\234\254\344\275\223/ZhenMeasure/R/zhenm_config_defaults.R"
++++ "b/V\351\241\271\347\233\256\346\265\213\350\257\225\344\270\216\345\274\200\345\217\221/\351\241\271\347\233\256\346\234\254\344\275\223/ZhenMeasure/R/zhenm_config_defaults.R"
+@@ -62,7 +62,21 @@ ZhenM_default_config <- function(qc_method = c("national_standard", "legacy")) {
+         fcr_min = c(0.76, 1.06, 1.14, 1.28, 1.35, 1.36, 1.34, 1.34, 1.31),
+         fcr_max = c(3.16, 3.08, 3.30, 3.41, 3.59, 3.86, 4.12, 4.27, 4.50),
+         stringsAsFactors = FALSE
+-      )
++      ),
++
++      # STL 时间序列采食量 QC (可选, 默认关闭)
++      use_stl_feed = FALSE,
++      stl_period = 7,
++      stl_s_window = "periodic",
++      stl_robust = TRUE,
++      stl_mad_multiplier = 3,
++      stl_min_obs = 30,
++
++      # Gompertz 生长曲线 QC (可选, 默认关闭)
++      use_gompertz = FALSE,
++      gompertz_min_obs = 60,
++      gompertz_mad_multiplier = 4,
++      gompertz_maxiter = 100
+     )
+   } else {
+     base_config$legacy <- list(
+@@ -74,6 +88,7 @@ ZhenM_default_config <- function(qc_method = c("national_standard", "legacy")) {
+       feed_percentile_high = 0.01,
+       min_test_days = 60,
+       max_missing_rate = 0.15,
++      growth_curve_r2_min = 0.95,
+ 
+       # Advanced legacy QC parameters
+       min_obs_for_ts = 100,
+diff --git "a/V\351\241\271\347\233\256\346\265\213\350\257\225\344\270\216\345\274\200\345\217\221/\351\241\271\347\233\256\346\234\254\344\275\223/ZhenMeasure/R/zhenm_daily_aggregate_filtered.R" "b/V\351\241\271\347\233\256\346\265\213\350\257\225\344\270\216\345\274\200\345\217\221/\351\241\271\347\233\256\346\234\254\344\275\223/ZhenMeasure/R/zhenm_daily_aggregate_filtered.R"
+index 817e606..69c6171 100644
+--- "a/V\351\241\271\347\233\256\346\265\213\350\257\225\344\270\216\345\274\200\345\217\221/\351\241\271\347\233\256\346\234\254\344\275\223/ZhenMeasure/R/zhenm_daily_aggregate_filtered.R"
++++ "b/V\351\241\271\347\233\256\346\265\213\350\257\225\344\270\216\345\274\200\345\217\221/\351\241\271\347\233\256\346\234\254\344\275\223/ZhenMeasure/R/zhenm_daily_aggregate_filtered.R"
+@@ -218,12 +218,12 @@ ZhenM_standard_to_daily_filtered <- function(standard_records) {
+ .apply_feed_lmm_correction <- function(daily_dt, raw_dt) {
+   dt <- data.table::copy(daily_dt)
+   
+-  # 9 error flags for single record anomalies
++  # 10 error flags for single record anomalies (including STL time series flag)
+   err_flags <- c("flag_duration_negative", "flag_duration_too_long",
+                  "flag_duration_zero_with_feed", "flag_speed_too_slow",
+                  "flag_speed_too_fast", "flag_speed_extreme_low_feed",
+                  "flag_speed_zero_long_duration", "flag_feed_negative",
+-                 "flag_feed_too_high")
++                 "flag_feed_too_high", "flag_STL_FI")
+   
+   # ==== 1. Extract feed intake of normal records and anomaly occurrence flags ====
+   # Mark "normal" records in raw_dt (i.e., all 9 error flags are FALSE)
+diff --git "a/V\351\241\271\347\233\256\346\265\213\350\257\225\344\270\216\345\274\200\345\217\221/\351\241\271\347\233\256\346\234\254\344\275\223/ZhenMeasure/R/zhenm_impute.R" "b/V\351\241\271\347\233\256\346\265\213\350\257\225\344\270\216\345\274\200\345\217\221/\351\241\271\347\233\256\346\234\254\344\275\223/ZhenMeasure/R/zhenm_impute.R"
+index 14fe7f7..0376c9c 100644
+--- "a/V\351\241\271\347\233\256\346\265\213\350\257\225\344\270\216\345\274\200\345\217\221/\351\241\271\347\233\256\346\234\254\344\275\223/ZhenMeasure/R/zhenm_impute.R"
++++ "b/V\351\241\271\347\233\256\346\265\213\350\257\225\344\270\216\345\274\200\345\217\221/\351\241\271\347\233\256\346\234\254\344\275\223/ZhenMeasure/R/zhenm_impute.R"
+@@ -127,7 +127,7 @@ ZhenM_impute_feed <- function(daily_records, impute_method = "national_standard"
+   dt[, was_missing_weight := is.na(daily_weight_g)]
+ 
+   dt[, `:=`(
+-    daily_weight_g = zoo::na.approx(daily_weight_g, na.rm = FALSE),
++    daily_weight_g = zoo::na.approx(daily_weight_g, na.rm = FALSE, rule = 2),
+     is_imputed_wt = was_missing_weight
+   ), by = animal_id]
+ 
+diff --git "a/V\351\241\271\347\233\256\346\265\213\350\257\225\344\270\216\345\274\200\345\217\221/\351\241\271\347\233\256\346\234\254\344\275\223/ZhenMeasure/R/zhenm_impute_feed.R" "b/V\351\241\271\347\233\256\346\265\213\350\257\225\344\270\216\345\274\200\345\217\221/\351\241\271\347\233\256\346\234\254\344\275\223/ZhenMeasure/R/zhenm_impute_feed.R"
+index 41dc034..05fbbb2 100644
+--- "a/V\351\241\271\347\233\256\346\265\213\350\257\225\344\270\216\345\274\200\345\217\221/\351\241\271\347\233\256\346\234\254\344\275\223/ZhenMeasure/R/zhenm_impute_feed.R"
++++ "b/V\351\241\271\347\233\256\346\265\213\350\257\225\344\270\216\345\274\200\345\217\221/\351\241\271\347\233\256\346\234\254\344\275\223/ZhenMeasure/R/zhenm_impute_feed.R"
+@@ -9,7 +9,7 @@
+   dt[, was_missing_feed := is.na(daily_feed_g)]
+ 
+   dt[, `:=`(
+-    daily_feed_g = zoo::na.approx(daily_feed_g, na.rm = FALSE),
++    daily_feed_g = zoo::na.approx(daily_feed_g, na.rm = FALSE, rule = 2),
+     is_imputed_feed = was_missing_feed
+   ), by = animal_id]
+ 
+diff --git "a/V\351\241\271\347\233\256\346\265\213\350\257\225\344\270\216\345\274\200\345\217\221/\351\241\271\347\233\256\346\234\254\344\275\223/ZhenMeasure/R/zhenm_qc_feed_standard.R" "b/V\351\241\271\347\233\256\346\265\213\350\257\225\344\270\216\345\274\200\345\217\221/\351\241\271\347\233\256\346\234\254\344\275\223/ZhenMeasure/R/zhenm_qc_feed_standard.R"
+index d37c483..2687c9e 100644
+--- "a/V\351\241\271\347\233\256\346\265\213\350\257\225\344\270\216\345\274\200\345\217\221/\351\241\271\347\233\256\346\234\254\344\275\223/ZhenMeasure/R/zhenm_qc_feed_standard.R"
++++ "b/V\351\241\271\347\233\256\346\265\213\350\257\225\344\270\216\345\274\200\345\217\221/\351\241\271\347\233\256\346\234\254\344\275\223/ZhenMeasure/R/zhenm_qc_feed_standard.R"
+@@ -111,13 +111,67 @@ ZhenM_qc_feed_standard <- function(standard_records, qc_method = "national_stand
+     dt[!is.na(feed_g), flag_feed_too_high := feed_g > quantile(feed_g, 0.99, na.rm = TRUE), by = animal_id]
+   }
+ 
++  # Phase 10: STL 时间序列采食量异常检测 (可选)
++  dt[, flag_STL_FI := FALSE]
++
++  if (isTRUE(cfg$national_standard$use_stl_feed) &&
++      "stl_min_obs" %in% names(cfg$national_standard)) {
++
++    log_detail("Executing STL time series feed QC (National Standard)...")
++
++    # 聚合到日级别
++    daily_for_stl <- dt[, .(daily_feed_g = sum(feed_g, na.rm = TRUE)),
++                        by = .(animal_id, record_date)]
++    data.table::setorder(daily_for_stl, animal_id, record_date)
++
++    ids <- unique(daily_for_stl$animal_id)
++    stl_processed <- 0
++    stl_cfg <- cfg$national_standard
++
++    for (id in ids) {
++      sub <- daily_for_stl[animal_id == id]
++      if (nrow(sub) < stl_cfg$stl_min_obs) next
++
++      y <- sub$daily_feed_g
++      if (sum(!is.na(y)) < stl_cfg$stl_min_obs) next
++
++      ts_obj <- tryCatch(
++        stats::ts(y, frequency = stl_cfg$stl_period),
++        error = function(e) NULL
++      )
++      if (is.null(ts_obj)) next
++
++      stl_fit <- tryCatch(
++        stats::stl(ts_obj, s.window = stl_cfg$stl_s_window,
++                   robust = stl_cfg$stl_robust),
++        error = function(e) NULL
++      )
++
++      if (!is.null(stl_fit)) {
++        resid <- stl_fit$time.series[, "remainder"]
++        mad_val <- stats::mad(resid, na.rm = TRUE)
++        if (mad_val > 0) {
++          outliers <- abs(resid) > stl_cfg$stl_mad_multiplier * mad_val
++          outlier_dates <- sub$record_date[outliers]
++          dt[animal_id == id & record_date %in% outlier_dates,
++             flag_STL_FI := TRUE]
++          stl_processed <- stl_processed + 1
++        }
++      }
++    }
++
++    log_detail(paste0("STL QC processed individuals: ", stl_processed))
++    n_stl <- sum(dt$flag_STL_FI, na.rm = TRUE)
++    log_detail(paste0("flag_STL_FI: ", n_stl))
++  }
++
+   # Mark any anomaly
+   dt[, is_outlier_feed := flag_feed_negative | flag_feed_too_high |
+        flag_duration_negative | flag_duration_too_long |
+        flag_duration_zero_with_feed | flag_speed_too_slow |
+        flag_speed_too_fast | flag_speed_extreme_low_feed |
+-       flag_speed_zero_long_duration]
+-  
++       flag_speed_zero_long_duration | flag_STL_FI]
++
+   # Log outlier statistics
+   n_feed_negative <- sum(dt$flag_feed_negative, na.rm = TRUE)
+   n_feed_too_high <- sum(dt$flag_feed_too_high, na.rm = TRUE)
+@@ -128,8 +182,9 @@ ZhenM_qc_feed_standard <- function(standard_records, qc_method = "national_stand
+   n_speed_fast <- sum(dt$flag_speed_too_fast, na.rm = TRUE)
+   n_speed_extreme <- sum(dt$flag_speed_extreme_low_feed, na.rm = TRUE)
+   n_speed_zero_long <- sum(dt$flag_speed_zero_long_duration, na.rm = TRUE)
++  n_stl_fi <- sum(dt$flag_STL_FI, na.rm = TRUE)
+   n_total_outlier <- sum(dt$is_outlier_feed, na.rm = TRUE)
+-  
++
+   log_detail(paste0("flag_feed_negative: ", n_feed_negative))
+   log_detail(paste0("flag_feed_too_high: ", n_feed_too_high))
+   log_detail(paste0("flag_duration_negative: ", n_duration_negative))
+@@ -139,13 +194,14 @@ ZhenM_qc_feed_standard <- function(standard_records, qc_method = "national_stand
+   log_detail(paste0("flag_speed_too_fast: ", n_speed_fast))
+   log_detail(paste0("flag_speed_extreme_low_feed: ", n_speed_extreme))
+   log_detail(paste0("flag_speed_zero_long_duration: ", n_speed_zero_long))
++  log_detail(paste0("flag_STL_FI: ", n_stl_fi))
+   log_info(paste0("Feed QC completed: Total outliers flagged = ", n_total_outlier, " (", round(n_total_outlier/n_total*100, 2), "%)"))
+-  
+-  message(sprintf("Feed QC (National-Standard): feed_negative=%d, feed_too_high=%d, duration_negative=%d, duration_too_long=%d, duration_zero=%d, speed_slow=%d, speed_fast=%d, speed_extreme=%d, speed_zero_long=%d. Total outliers=%d", 
+-                  n_feed_negative, n_feed_too_high, 
++
++  message(sprintf("Feed QC (National-Standard): feed_negative=%d, feed_too_high=%d, duration_negative=%d, duration_too_long=%d, duration_zero=%d, speed_slow=%d, speed_fast=%d, speed_extreme=%d, speed_zero_long=%d, STL=%d. Total outliers=%d",
++                  n_feed_negative, n_feed_too_high,
+                   n_duration_negative, n_duration_too_long, n_duration_zero,
+                   n_speed_slow, n_speed_fast, n_speed_extreme,
+-                  n_speed_zero_long, n_total_outlier))
++                  n_speed_zero_long, n_stl_fi, n_total_outlier))
+   dt
+ }
+ 
+@@ -153,7 +209,7 @@ ZhenM_qc_feed_standard <- function(standard_records, qc_method = "national_stand
+ #' @keywords internal
+ .qc_feed_standard_legacy <- function(standard_records, cfg, logger = NULL) {
+   dt <- data.table::copy(standard_records)
+-  feed_range <- cfg$legacy$feed_intake_range
++  feed_range <- .normalize_feed_range(cfg$legacy$feed_intake_range)
+   
+   # Create logger helpers
+   loggers <- .create_logger_helpers(logger)
+diff --git "a/V\351\241\271\347\233\256\346\265\213\350\257\225\344\270\216\345\274\200\345\217\221/\351\241\271\347\233\256\346\234\254\344\275\223/ZhenMeasure/R/zhenm_qc_utils.R" "b/V\351\241\271\347\233\256\346\265\213\350\257\225\344\270\216\345\274\200\345\217\221/\351\241\271\347\233\256\346\234\254\344\275\223/ZhenMeasure/R/zhenm_qc_utils.R"
+index 4f640a5..c33d7ff 100644
+--- "a/V\351\241\271\347\233\256\346\265\213\350\257\225\344\270\216\345\274\200\345\217\221/\351\241\271\347\233\256\346\234\254\344\275\223/ZhenMeasure/R/zhenm_qc_utils.R"
++++ "b/V\351\241\271\347\233\256\346\265\213\350\257\225\344\270\216\345\274\200\345\217\221/\351\241\271\347\233\256\346\234\254\344\275\223/ZhenMeasure/R/zhenm_qc_utils.R"
+@@ -118,6 +118,7 @@
+     "national_standard" = c(
+       "flag_weight_out_of_range", "flag_weight_low",
+       "flag_daily_weight_low", "flag_growth_curve_poor",
++      "flag_Gompertz_WT", "flag_STL_FI",
+       "is_outlier_wt"
+     ),
+     "legacy" = c(
+diff --git "a/V\351\241\271\347\233\256\346\265\213\350\257\225\344\270\216\345\274\200\345\217\221/\351\241\271\347\233\256\346\234\254\344\275\223/ZhenMeasure/R/zhenm_qc_weight_standard.R" "b/V\351\241\271\347\233\256\346\265\213\350\257\225\344\270\216\345\274\200\345\217\221/\351\241\271\347\233\256\346\234\254\344\275\223/ZhenMeasure/R/zhenm_qc_weight_standard.R"
+index b819f1c..836cb40 100644
+--- "a/V\351\241\271\347\233\256\346\265\213\350\257\225\344\270\216\345\274\200\345\217\221/\351\241\271\347\233\256\346\234\254\344\275\223/ZhenMeasure/R/zhenm_qc_weight_standard.R"
++++ "b/V\351\241\271\347\233\256\346\265\213\350\257\225\344\270\216\345\274\200\345\217\221/\351\241\271\347\233\256\346\234\254\344\275\223/ZhenMeasure/R/zhenm_qc_weight_standard.R"
+@@ -114,7 +114,8 @@ ZhenM_qc_weight_standard <- function(standard_records, qc_method = "national_sta
+   
+   # Initialize QC flag columns
+   dt <- .init_qc_flags(dt, method = "national_standard")
+-  
++  dt[, flag_Gompertz_WT := FALSE]
++
+   # Range check (Task 2.3)
+   weight_range <- .normalize_weight_range(cfg$national_standard$weight_range)
+   dt[!is.na(weight_g), flag_weight_out_of_range :=
+@@ -270,14 +271,53 @@ ZhenM_qc_weight_standard <- function(standard_records, qc_method = "national_sta
+     # Assign the weight values from step 1 directly back to the original standard records (exact match via row index)
+     dt[weight_records$row_idx, rlm_weight := rlm_weights_1]
+     dt[weight_records$row_idx, flag_weight_low := weight_records$flag_outlier_single]
++
++    # ===== Step 6: Gompertz 生长曲线检查 (可选) =====
++    if (isTRUE(cfg$national_standard$use_gompertz) &&
++        "gompertz_min_obs" %in% names(cfg$national_standard) &&
++        nrow(daily_weight_data) >= cfg$national_standard$gompertz_min_obs) {
++
++      x_gomp <- seq_len(nrow(daily_weight_data))
++      y_gomp <- daily_weight_data$daily_weight / 1000  # 转为 kg
++      valid_gomp <- !is.na(y_gomp)
++
++      if (sum(valid_gomp) >= cfg$national_standard$gompertz_min_obs) {
++        gompertz_fit <- tryCatch({
++          A_init <- max(y_gomp[valid_gomp], na.rm = TRUE) * 1.1
++          B_init <- 2
++          C_init <- 0.05
++
++          stats::nls(y_gomp[valid_gomp] ~ A * exp(-B * exp(-C * x_gomp[valid_gomp])),
++                     start = list(A = A_init, B = B_init, C = C_init),
++                     control = stats::nls.control(
++                       maxiter = cfg$national_standard$gompertz_maxiter,
++                       warnOnly = TRUE))
++        }, error = function(e) NULL)
++
++        if (!is.null(gompertz_fit)) {
++          pred <- predict(gompertz_fit, newdata = list(x = x_gomp[valid_gomp]))
++          resid <- y_gomp[valid_gomp] - pred
++          mad_val <- stats::mad(resid, na.rm = TRUE)
++
++          if (mad_val > 0) {
++            outliers_logical <- abs(resid) >
++              cfg$national_standard$gompertz_mad_multiplier * mad_val
++            outlier_dates <- daily_weight_data$record_date[valid_gomp][outliers_logical]
++
++            dt[animal_id == id & record_date %in% outlier_dates,
++               flag_Gompertz_WT := TRUE]
++          }
++        }
++      }
++    }
+   }
+-  
++
+   # If data is completely insufficient or RLM fails severely, mark all original data of the animal
+   if (length(animals_to_delete) > 0) {
+     dt[animal_id %in% animals_to_delete, flag_growth_curve_poor := TRUE]
+   }
+   
+-  dt[, is_outlier_wt := flag_weight_out_of_range | flag_weight_low | flag_daily_weight_low | flag_growth_curve_poor]
++  dt[, is_outlier_wt := flag_weight_out_of_range | flag_weight_low | flag_daily_weight_low | flag_growth_curve_poor | flag_Gompertz_WT]
+ 
+   range_filter <- .apply_test_weight_range_filter(
+     dt,
+@@ -293,8 +333,9 @@ ZhenM_qc_weight_standard <- function(standard_records, qc_method = "national_sta
+   n_weight_low <- sum(dt$flag_weight_low, na.rm = TRUE)
+   n_daily_wt_low <- sum(dt$flag_daily_weight_low, na.rm = TRUE)
+   n_growth_poor <- sum(dt$flag_growth_curve_poor, na.rm = TRUE)
++  n_gompertz_wt <- sum(dt$flag_Gompertz_WT, na.rm = TRUE)
+   n_total_outlier <- sum(dt$is_outlier_wt, na.rm = TRUE)
+-  
++
+   log_detail(paste0("Animals successfully fitted with RLM model: ", rlm_processed_count))
+   log_detail(paste0("Animals skipped for RLM model (insufficient data): ", rlm_skipped_count))
+   log_detail(paste0("Animals deleted due to insufficient growth curve R²: ", length(animals_to_delete)))
+@@ -302,15 +343,16 @@ ZhenM_qc_weight_standard <- function(standard_records, qc_method = "national_sta
+   log_detail(paste0("flag_weight_low (RLM weight too low): ", n_weight_low))
+   log_detail(paste0("flag_daily_weight_low (Daily RLM weight too low): ", n_daily_wt_low))
+   log_detail(paste0("flag_growth_curve_poor: ", n_growth_poor))
++  log_detail(paste0("flag_Gompertz_WT: ", n_gompertz_wt))
+   n_total_after_filter <- nrow(dt)
+   outlier_pct <- if (n_total_after_filter == 0) 0 else round(n_total_outlier / n_total_after_filter * 100, 2)
+   log_detail(paste0("post_weight_qc_test_range_removed_records: ", range_filter$removed_records,
+                     ", removed_animals: ", range_filter$removed_animals))
+   log_info(paste0("Weight QC complete: Total abnormal records flagged ", n_total_outlier, " (", outlier_pct, "%)"))
+-  
+-  message(sprintf("Weight QC (National-Standard): out_of_range=%d, weight_low=%d, daily_wt_low=%d, growth_curve_poor=%d, test_range_removed=%d. Total outliers=%d",
++
++  message(sprintf("Weight QC (National-Standard): out_of_range=%d, weight_low=%d, daily_wt_low=%d, growth_curve_poor=%d, Gompertz=%d, test_range_removed=%d. Total outliers=%d",
+                   n_out_of_range, n_weight_low, n_daily_wt_low,
+-                  n_growth_poor, range_filter$removed_records, n_total_outlier))
++                  n_growth_poor, n_gompertz_wt, range_filter$removed_records, n_total_outlier))
+ 
+   dt
+ }

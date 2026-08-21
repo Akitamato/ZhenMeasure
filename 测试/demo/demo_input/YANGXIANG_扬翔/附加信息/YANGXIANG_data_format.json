@@ -1,0 +1,55 @@
+{
+  "version": "1.0",
+  "read_types": {
+    "character_cols": [2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 14, 15, 20, 23],
+    "numeric_cols": [10, 13, 18, 19, 22, 24],
+    "date_cols": [1, 16, 17, 21]
+  },
+  "standard_mapping": {
+    "ID": {
+      "name": "个体号(ID)",
+      "position": 6,
+      "unit": null
+    },
+    "AGE": {
+      "name": "日龄(AGE)",
+      "position": 10,
+      "unit": "Day"
+    },
+    "DFI": {
+      "name": "日采食量(DFI)",
+      "position": 13,
+      "unit": "g"
+    },
+    "Visit_time": {
+      "name": "采食开始时间(Visit_time)",
+      "position": 16,
+      "unit": "YYYY-MM-DD hh:mm:ss"
+    },
+    "End_time": {
+      "name": "采食结束时间(End_time)",
+      "position": 17,
+      "unit": "YYYY-MM-DD hh:mm:ss"
+    },
+    "Duration": {
+      "name": "采食时长(Duration)",
+      "position": 18,
+      "unit": "s"
+    },
+    "Feed_intake": {
+      "name": "采食量(Feed_intake)",
+      "position": 19,
+      "unit": "g"
+    },
+    "Weight": {
+      "name": "体重(Weight)",
+      "position": 22,
+      "unit": "g"
+    },
+    "Location": {
+      "name": "测定栋舍(Location)",
+      "position": 11,
+      "unit": null
+    }
+  }
+}

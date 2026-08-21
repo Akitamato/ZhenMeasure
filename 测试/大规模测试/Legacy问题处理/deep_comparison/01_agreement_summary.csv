@@ -1,0 +1,7 @@
+source,flag_type,both_flagged,both_clean,nat_only,leg_only,agreement_rate,kappa
+YANGXIANG,is_outlier_wt,682,9804,198,28,0.978902,0.8466
+YANGXIANG,is_outlier_feed,513,5397,4596,411,0.541358,0.0312
+FIRE,is_outlier_wt,421,6661,1060,57,0.863764,0.3747
+FIRE,is_outlier_feed,141,6285,1348,425,0.783754,0.0413
+Nedap,is_outlier_wt,0,97,11,2,0.881818,-0.0317
+Nedap,is_outlier_feed,1,168,24,8,0.840796,-0.0075

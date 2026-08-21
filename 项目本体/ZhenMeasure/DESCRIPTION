@@ -1,0 +1,39 @@
+Package: ZhenMeasure
+Type: Package
+Title: ZhenMeasure: Pig Feeding Station Data Standardization, Quality Control and Phenotype Toolkit
+Version: 1.1.0
+Authors@R: c(
+    person(given = "LiaoYiHui", family = "", role = c("aut", "cre"), email = "yhliao@webmail.hzau.edu.cn"),
+    person(given = "WeiYi", family = "", role = "aut"),
+    person(given = "TangZhenShuang", family = "", role = "aut"),
+    person(given = "YinLiLin", family = "", role = "aut")
+    )
+Maintainer: LiaoYiHui <yhliao@webmail.hzau.edu.cn>
+Description: Modular package for pig feeding station data standardization,
+    quality control and phenotype calculation. The current development
+    baseline supports YANGXIANG, Nedap and FIRE data sources, birth info
+    mapping, structured QC outputs, regression diagnostics and build-first
+    package validation. Only the national_standard QC method is supported
+    since V1.0.0 (legacy method removed).
+License: MIT + file LICENSE
+Encoding: UTF-8
+Depends: R (>= 4.1.0)
+Imports:
+    data.table,
+    MASS,
+    readxl,
+    lubridate,
+    zoo,
+    utils,
+    stats,
+    lme4,
+    imputeTS
+Suggests:
+    testthat (>= 3.0.0),
+    knitr,
+    rmarkdown,
+    progress,
+    jsonlite
+VignetteBuilder: knitr
+Config/testthat/edition: 3
+RoxygenNote: 7.3.2

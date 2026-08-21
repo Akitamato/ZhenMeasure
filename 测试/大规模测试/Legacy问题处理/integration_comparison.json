@@ -1,0 +1,191 @@
+{
+  "baseline": {
+    "YANGXIANG": {
+      "source": "YANGXIANG",
+      "n_animals": 118,
+      "n_daily_records": 13087,
+      "ADFI_g": 2604.83,
+      "ADG_g": 947.24,
+      "FCR": 3.0768,
+      "FCR_sd": 0.3864,
+      "FCR_NA": 0
+    },
+    "FIRE": {
+      "source": "FIRE",
+      "n_animals": 134,
+      "n_daily_records": 13340,
+      "ADFI_g": 2721.25,
+      "ADG_g": 1007.91,
+      "FCR": 3.0358,
+      "FCR_sd": 0.4868,
+      "FCR_NA": 0
+    },
+    "Nedap": {
+      "source": "Nedap",
+      "n_animals": 3,
+      "n_daily_records": 201,
+      "ADFI_g": 2812.56,
+      "ADG_g": 1034.51,
+      "FCR": 3.0613,
+      "FCR_sd": 0.2009,
+      "FCR_NA": 0
+    }
+  },
+  "integrated_default": {
+    "YANGXIANG": {
+      "source": "YANGXIANG",
+      "n_animals": 118,
+      "n_daily_records": 13087,
+      "ADFI_g": 2604.83,
+      "ADG_g": 947.24,
+      "FCR": 3.0768,
+      "FCR_sd": 0.3864,
+      "FCR_NA": 0
+    },
+    "FIRE": {
+      "source": "FIRE",
+      "n_animals": 134,
+      "n_daily_records": 13340,
+      "ADFI_g": 2721.25,
+      "ADG_g": 1007.91,
+      "FCR": 3.0358,
+      "FCR_sd": 0.4868,
+      "FCR_NA": 0
+    },
+    "Nedap": {
+      "source": "Nedap",
+      "n_animals": 3,
+      "n_daily_records": 201,
+      "ADFI_g": 2812.56,
+      "ADG_g": 1034.51,
+      "FCR": 3.0613,
+      "FCR_sd": 0.2009,
+      "FCR_NA": 0
+    }
+  },
+  "integrated_stl": {
+    "YANGXIANG": {
+      "source": "YANGXIANG",
+      "n_animals": 118,
+      "n_daily_records": 13087,
+      "ADFI_g": 2566.85,
+      "ADG_g": 947.24,
+      "FCR": 3.0322,
+      "FCR_sd": 0.3932,
+      "FCR_NA": 0
+    },
+    "FIRE": {
+      "source": "FIRE",
+      "n_animals": 134,
+      "n_daily_records": 13340,
+      "ADFI_g": 2743.81,
+      "ADG_g": 1007.91,
+      "FCR": 3.0595,
+      "FCR_sd": 0.5015,
+      "FCR_NA": 0
+    },
+    "Nedap": {
+      "source": "Nedap",
+      "n_animals": 3,
+      "n_daily_records": 201,
+      "ADFI_g": 2874.42,
+      "ADG_g": 1034.51,
+      "FCR": 3.1282,
+      "FCR_sd": 0.1678,
+      "FCR_NA": 0
+    }
+  },
+  "integrated_gompertz": {
+    "YANGXIANG": {
+      "source": "YANGXIANG",
+      "n_animals": 118,
+      "n_daily_records": 13087,
+      "ADFI_g": 2604.57,
+      "ADG_g": 947.24,
+      "FCR": 3.0765,
+      "FCR_sd": 0.3863,
+      "FCR_NA": 0
+    },
+    "FIRE": {
+      "source": "FIRE",
+      "n_animals": 136,
+      "n_daily_records": 13531,
+      "ADFI_g": 2714.77,
+      "ADG_g": 1009.22,
+      "FCR": 3.026,
+      "FCR_sd": 0.4985,
+      "FCR_NA": 0
+    },
+    "Nedap": {
+      "source": "Nedap",
+      "n_animals": 3,
+      "n_daily_records": 201,
+      "ADFI_g": 2812.46,
+      "ADG_g": 1034.51,
+      "FCR": 3.0612,
+      "FCR_sd": 0.2009,
+      "FCR_NA": 0
+    }
+  },
+  "integrated_both": {
+    "YANGXIANG": {
+      "source": "YANGXIANG",
+      "n_animals": 118,
+      "n_daily_records": 13087,
+      "ADFI_g": 2567.38,
+      "ADG_g": 947.24,
+      "FCR": 3.0328,
+      "FCR_sd": 0.3932,
+      "FCR_NA": 0
+    },
+    "FIRE": {
+      "source": "FIRE",
+      "n_animals": 136,
+      "n_daily_records": 13531,
+      "ADFI_g": 2737.46,
+      "ADG_g": 1009.22,
+      "FCR": 3.0499,
+      "FCR_sd": 0.5115,
+      "FCR_NA": 0
+    },
+    "Nedap": {
+      "source": "Nedap",
+      "n_animals": 3,
+      "n_daily_records": 201,
+      "ADFI_g": 2874.28,
+      "ADG_g": 1034.51,
+      "FCR": 3.1281,
+      "FCR_sd": 0.1678,
+      "FCR_NA": 0
+    }
+  },
+  "diff": {
+    "YANGXIANG": {
+      "animal_diff": 0,
+      "daily_diff": 0,
+      "ADFI_diff": 0,
+      "ADG_diff": 0,
+      "FCR_diff": 0,
+      "FCR_sd_diff": 0,
+      "FCR_NA_diff": 0
+    },
+    "FIRE": {
+      "animal_diff": 0,
+      "daily_diff": 0,
+      "ADFI_diff": 0,
+      "ADG_diff": 0,
+      "FCR_diff": 0,
+      "FCR_sd_diff": 0,
+      "FCR_NA_diff": 0
+    },
+    "Nedap": {
+      "animal_diff": 0,
+      "daily_diff": 0,
+      "ADFI_diff": 0,
+      "ADG_diff": 0,
+      "FCR_diff": 0,
+      "FCR_sd_diff": 0,
+      "FCR_NA_diff": 0
+    }
+  }
+}

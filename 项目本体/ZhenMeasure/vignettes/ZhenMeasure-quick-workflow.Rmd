@@ -1,0 +1,86 @@
+---
+title: "ZhenMeasure Quick Workflow"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{ZhenMeasure Quick Workflow}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE
+)
+```
+
+ZhenMeasure provides a modular workflow for pig feeding station data processing,
+including data reading, QC, phenotype calculation, and structured outputs.
+
+## 1. Core Entry Point
+
+- `run_zhen_measure()` is the main entry point for the full pipeline.
+
+## 2. Run Modes
+
+- `read_only`: load and standardize records.
+- `qc_only`: run Overall/Feed/Weight QC and write QC outputs.
+- `full_run`: run QC and phenotype calculation.
+
+## 3. Visualization Parameters
+
+The plotting capability is controlled by two boolean parameters:
+
+- `growth_curve_test = TRUE`: write a combined PDF named `growth_curves.pdf`.
+- `growth_curve = TRUE`: write one PDF per animal under `growth_curves/`.
+
+The plot layout is 2x3 panels for each animal:
+
+- Original Age vs Feed Intake
+- Original Feed Intake vs Duration
+- Original Age vs Weight
+- Cleaned Age vs Feed Intake
+- Cleaned Feed Intake vs Duration
+- Cleaned Age vs Weight
+
+## 4. Minimal Full Run Example
+
+```{r}
+library(ZhenMeasure)
+
+res <- run_zhen_measure(
+  data_path = "path/to/raw/data",
+  data_type = "YANGXIANG",
+  format_path = "path/to/data_format.json",
+  output_dir = "output/run1",
+  growth_curve = TRUE,
+  growth_curve_test = TRUE,
+  target_weight_stages = "YANGXIANG",
+  phenotype_method = "report"
+)
+```
+
+## 5. Output Files
+
+When `output_dir` is provided, `qc_only` or `full_run` writes:
+
+- `corrected_standard_records.csv`
+- `corrected_records.csv`
+- `corrected_daily_records.csv`
+- `error_type_summary.csv`
+- `animal_qc_summary.csv`
+- `qc_run_summary.txt`
+- `phenotypes.csv` (full run)
+- `growth_curves.pdf` (when `growth_curve_test = TRUE`)
+- `growth_curves/*.pdf` (when `growth_curve = TRUE`)
+
+## 6. QC Method
+
+Since V1.0.0, only the `national_standard` QC method is supported.
+The legacy method has been removed. Optional enhancements include:
+
+- **STL time-series feed anomaly detection** (`use_stl_feed = TRUE`)
+- **Gompertz growth curve weight anomaly detection** (`use_gompertz = TRUE`)
+
+Both are disabled by default. See `?run_zhen_measure` for details.

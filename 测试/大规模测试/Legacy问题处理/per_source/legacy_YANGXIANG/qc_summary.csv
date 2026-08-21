@@ -1,0 +1,10 @@
+﻿error_type,count,percentage,severity
+flag_STL_FI,10957,5.67,LOW
+flag_weight_out_of_range,5067,2.62,HIGH
+flag_percentile_high,4020,2.08,LOW
+flag_RLM_WT,3993,2.07,LOW
+flag_percentile_low,2458,1.27,LOW
+flag_Gompertz_WT,1088,0.56,LOW
+flag_feed_out_of_range,14,0.01,HIGH
+flag_SD_WT,4,0,LOW
+is_outlier_fi_stl,0,0,LOW

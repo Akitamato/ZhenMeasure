@@ -1,0 +1,65 @@
+{
+  "version": "1.0",
+  "description": "FIRE (奥斯本) feeding data format configuration",
+  "read_types": {
+    "character_cols": [1, 2, 3, 10],
+    "numeric_cols": [8, 9],
+    "date_cols": [4, 5]
+  },
+  "standard_mapping": {
+    "ID": {
+      "name": "个体号(ID)",
+      "position": 2,
+      "unit": null,
+      "source_name": "个体号(ID)"
+    },
+    "Location": {
+      "name": "测定栋舍(Location)",
+      "position": 1,
+      "unit": null,
+      "source_name": "测定栋舍(Location)"
+    },
+    "Visit_time": {
+      "name": "采食开始时间(Visit_time)",
+      "position": 4,
+      "unit": "YYYY-MM-DD hh:mm:ss",
+      "source_name": "采食开始时间(Visit_time)"
+    },
+    "End_time": {
+      "name": "采食结束时间(End_time)",
+      "position": 5,
+      "unit": "YYYY-MM-DD hh:mm:ss",
+      "source_name": "采食结束时间(End_time)"
+    },
+    "Duration": {
+      "name": "采食时长(Duration)",
+      "position": null,
+      "unit": "s",
+      "source_name": "计算字段: End_time - Visit_time"
+    },
+    "Feed_intake": {
+      "name": "采食量(Feed_intake)",
+      "position": 8,
+      "unit": "kg",
+      "source_name": "采食量(Feed_intake)"
+    },
+    "Weight": {
+      "name": "体重(Weight)",
+      "position": 9,
+      "unit": "kg",
+      "source_name": "体重(Weight)"
+    },
+    "AGE": {
+      "name": "日龄(AGE)",
+      "position": null,
+      "unit": "Day",
+      "source_name": "需从 birth_info_path 文件计算"
+    },
+    "DFI": {
+      "name": "日采食量(DFI)",
+      "position": null,
+      "unit": "g",
+      "source_name": "计算字段: 按(ID, record_date)累加Feed_intake"
+    }
+  }
+}

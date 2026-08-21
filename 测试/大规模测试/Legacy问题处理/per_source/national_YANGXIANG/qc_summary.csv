@@ -1,0 +1,14 @@
+﻿error_type,count,percentage,severity
+flag_speed_too_fast,7787,3.47,LOW
+flag_weight_out_of_range,4983,2.22,HIGH
+flag_weight_low,4386,1.95,MEDIUM
+flag_speed_too_slow,1782,0.79,LOW
+flag_daily_weight_low,1306,0.58,MEDIUM
+flag_duration_too_long,730,0.32,LOW
+flag_speed_extreme_low_feed,151,0.07,LOW
+flag_duration_zero_with_feed,22,0.01,LOW
+flag_feed_too_high,13,0.01,MEDIUM
+flag_growth_curve_poor,0,0,HIGH
+flag_feed_negative,0,0,LOW
+flag_duration_negative,0,0,LOW
+flag_speed_zero_long_duration,0,0,LOW

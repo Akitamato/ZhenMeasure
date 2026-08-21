@@ -1,0 +1,1482 @@
+══ Documenting ═════════════════════════════════════════════════════════════════════════════════════════════════════════
+Rscript : ℹ Updating ZhenMeasure documentation
+At line:2 char:1
++ Rscript -e "devtools::check(pkg='V项目测试与开发/项目本体/ZhenMeasure', vignette ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (ℹ Updating ZhenMeasure documentation:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Writing 'NAMESPACE'
+ℹ Loading ZhenMeasure
+Writing 'ZhenM_default_config.Rd'
+Writing 'ZhenM_merge_config.Rd'
+Writing 'ZhenM_standard_to_daily_filtered.Rd'
+Writing 'ZhenM_impute_data.Rd'
+Writing 'ZhenM_impute_weight.Rd'
+Writing 'ZhenM_impute_feed.Rd'
+Writing 'ZhenM_impute_national.Rd'
+Writing 'ZhenM_create_logger.Rd'
+Writing 'ZhenM_init_log.Rd'
+Writing 'ZhenM_log.Rd'
+Writing 'ZhenM_close_log.Rd'
+Writing 'ZhenM_log_qc_stat.Rd'
+Writing 'ZhenM_log_threshold.Rd'
+Writing 'ZhenM_calc_phenotypes.Rd'
+Writing 'ZhenM_calc_phenotypes_stage.Rd'
+Writing 'ZhenM_qc_feed_standard.Rd'
+Writing 'ZhenM_generate_qc_summary.Rd'
+Writing 'ZhenM_qc_weight_standard.Rd'
+Writing 'ZhenM_read_data.Rd'
+Writing 'ZhenM_standard_to_daily.Rd'
+Writing 'ZhenM_data_summary.Rd'
+Writing 'ZhenM_convert_yangxiang_to_standard.Rd'
+Writing 'ZhenM_convert_nedap_to_standard.Rd'
+Writing 'ZhenM_convert_fire_to_standard.Rd'
+Writing 'ZhenM_standard_columns.Rd'
+Writing 'ZhenM_validate_standard_format.Rd'
+Writing 'ZhenM_create_standard_template.Rd'
+Writing 'ZhenM_standard_record_fields.Rd'
+Writing 'ZhenM_validate_standard_records.Rd'
+Writing 'ZhenM_write_run_outputs.Rd'
+Writing 'ZhenM_write_plot_outputs.Rd'
+
+══ Building ════════════════════════════════════════════════════════════════════════════════════════════════════════════
+Setting env vars:
+• CFLAGS    : -Wall -pedantic
+• CXXFLAGS  : -Wall -pedantic
+• CXX11FLAGS: -Wall -pedantic
+• CXX14FLAGS: -Wall -pedantic
+• CXX17FLAGS: -Wall -pedantic
+• CXX20FLAGS: -Wall -pedantic
+── R CMD build ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+* checking for file 'D:\My_project\Cooperation_Project\横向\长期_2025.5.16_扬翔群喂仪算法开发（周光亮）(1)\扬翔群体饲喂仪器数据处理脚本开发\V项目测试与开发\项目本体\ZhenMeasure/DESCRIPTION' ... OK
+* preparing 'ZhenMeasure':
+* checking DESCRIPTION meta-information ... OK
+* checking for LF line-endings in source and make files and shell scripts
+* checking for empty or unneeded directories
+Removed empty directory 'ZhenMeasure/inst/extdata'
+Removed empty directory 'ZhenMeasure/tests/testthat/fixtures'
+* building 'ZhenMeasure_0.2.4.tar.gz'
+
+══ Checking ════════════════════════════════════════════════════════════════════════════════════════════════════════════
+Setting env vars:
+• _R_CHECK_CRAN_INCOMING_REMOTE_               : FALSE
+• _R_CHECK_CRAN_INCOMING_                      : FALSE
+• _R_CHECK_FORCE_SUGGESTS_                     : FALSE
+• _R_CHECK_PACKAGES_USED_IGNORE_UNUSED_IMPORTS_: FALSE
+• NOT_CRAN                                     : true
+── R CMD check ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+* using log directory 'C:/Users/yhliao/AppData/Local/Temp/claude/RtmpwbHD1P/file9607a03523c/ZhenMeasure.Rcheck'
+* using R version 4.4.3 (2025-02-28 ucrt)
+* using platform: x86_64-w64-mingw32
+* R was compiled by
+    gcc.exe (GCC) 13.3.0
+    GNU Fortran (GCC) 13.3.0
+* running under: Windows 11 x64 (build 26200)
+* using session charset: UTF-8
+* using options '--no-manual --ignore-vignettes --as-cran'
+* checking for file 'ZhenMeasure/DESCRIPTION' ... OK
+* checking extension type ... Package
+* this is package 'ZhenMeasure' version '0.2.4'
+* package encoding: UTF-8
+* checking package namespace information ... OK
+* checking package dependencies ...警告: 无法在貯藏處https://CRAN.R-project.org/src/contrib中读写索引:
+  download from 'https://CRAN.R-project.org/src/contrib/PACKAGES' failed
+ OK
+* checking if this is a source package ... OK
+* checking if there is a namespace ... OK
+* checking for executable files ... OK
+* checking for hidden files and directories ... OK
+* checking for portable file names ... OK
+* checking whether package 'ZhenMeasure' can be installed ... OK
+* checking installed package size ... OK
+* checking package directory ... OK
+* checking for future file timestamps ... NOTE
+unable to verify current time
+* checking DESCRIPTION meta-information ... OK
+* checking top-level files ... NOTE
+Non-standard file/directory found at top level:
+  'build-output'
+* checking for left-over files ... OK
+* checking index information ... OK
+* checking package subdirectories ... OK
+* checking code files for non-ASCII characters ... WARNING
+Found the following files with non-ASCII characters:
+  R/run_zhen_measure.R
+  R/zhenm_logging.R
+  R/zhenm_qc_utils.R
+  R/zhenm_qc_weight_standard.R
+  R/zhenm_read_data.R
+  R/zhenm_read_utils.R
+  R/zhenm_write_outputs.R
+Portable packages must use only ASCII characters in their R code and
+NAMESPACE directives, except perhaps in comments.
+Use \uxxxx escapes for other characters.
+Function 'tools::showNonASCIIfile' can help in finding non-ASCII
+characters in files.
+* checking R files for syntax errors ... OK
+* checking whether the package can be loaded ... OK
+* checking whether the package can be loaded with stated dependencies ... OK
+* checking whether the package can be unloaded cleanly ... OK
+* checking whether the namespace can be loaded with stated dependencies ... OK
+* checking whether the namespace can be unloaded cleanly ... OK
+* checking dependencies in R code ... NOTE
+Namespaces in Imports field not imported from:
+  'nlme' 'quantreg' 'splines'
+  All declared Imports should be used.
+* checking S3 generic/method consistency ... OK
+* checking replacement functions ... OK
+* checking foreign function calls ... OK
+* checking R code for possible problems ... NOTE
+.add_stage_fcr_qc: no visible global function definition for ':='
+.add_stage_fcr_qc: no visible binding for global variable
+  'weight_stage'
+.add_stage_fcr_qc: no visible binding for global variable 'weight_kg'
+.add_stage_fcr_qc: no visible binding for global variable 'feed_kg'
+.add_stage_fcr_qc: no visible binding for global variable '.N'
+.add_stage_fcr_qc: no visible binding for global variable 'stage_gain'
+.add_stage_fcr_qc: no visible binding for global variable 'stage_feed'
+.add_stage_fcr_qc: no visible binding for global variable 'stage_label'
+.add_stage_fcr_qc: no visible binding for global variable 'weight_min'
+.add_stage_fcr_qc: no visible binding for global variable 'weight_max'
+.add_stage_fcr_qc: no visible binding for global variable
+  'stage_fcr_valid'
+.add_stage_fcr_qc: no visible binding for global variable 'fcr_min'
+.add_stage_fcr_qc: no visible binding for global variable 'fcr_max'
+.add_stage_fcr_qc: no visible binding for global variable
+  'invalid_stages'
+.add_stage_fcr_qc: no visible binding for global variable
+  'flag_fcr_stage_invalid'
+.add_stage_fcr_qc: no visible binding for global variable
+  'n_valid_stages'
+.add_stage_fcr_qc: no visible binding for global variable 'n_stages'
+.annotate_raw_daily_flags: no visible global function definition for
+  ':='
+.annotate_raw_daily_flags: no visible binding for global variable
+  'day_has_outlier_wt'
+.annotate_raw_daily_flags: no visible binding for global variable
+  'day_has_outlier_feed'
+.annotate_raw_daily_flags: no visible binding for global variable
+  'day_is_imputed_wt'
+.annotate_raw_daily_flags: no visible binding for global variable
+  'day_is_imputed_feed'
+.apply_feed_lmm_correction: no visible global function definition for
+  ':='
+.apply_feed_lmm_correction: no visible binding for global variable
+  'is_feed_normal_record'
+.apply_feed_lmm_correction: no visible binding for global variable
+  '.SD'
+.apply_feed_lmm_correction: no visible binding for global variable
+  'normal_feed_sum'
+.apply_feed_lmm_correction: no visible binding for global variable
+  'adg_g'
+.apply_feed_lmm_correction: no visible binding for global variable
+  'daily_weight_g'
+.apply_feed_lmm_correction: no visible global function definition for
+  'as.formula'
+.apply_feed_lmm_correction: no visible binding for global variable
+  'correction_g'
+.apply_feed_lmm_correction: no visible binding for global variable
+  'daily_feed_g_corrected'
+.apply_test_weight_range_filter: no visible global function definition
+  for ':='
+.apply_test_weight_range_filter: no visible binding for global variable
+  'start_weight_kg'
+.apply_test_weight_range_filter: no visible binding for global variable
+  'end_weight_kg'
+.apply_test_weight_range_filter: no visible binding for global variable
+  'is_valid_range'
+.apply_test_weight_range_filter: no visible global function definition
+  for 'head'
+.build_raw_daily: no visible global function definition for ':='
+.build_raw_daily: no visible binding for global variable '.tmp_feed'
+.build_raw_daily: no visible binding for global variable '.tmp_wt'
+.build_raw_daily: no visible binding for global variable '.N'
+.calc_base_phenotypes: no visible global function definition for
+  'as.IDate'
+.calc_base_phenotypes: no visible binding for global variable '.SD'
+.calc_base_phenotypes: no visible global function definition for ':='
+.calc_base_phenotypes: no visible binding for global variable 'ADG_g'
+.calc_base_phenotypes: no visible binding for global variable
+  'end_weight_g'
+.calc_base_phenotypes: no visible binding for global variable
+  'start_weight_g'
+.calc_base_phenotypes: no visible binding for global variable
+  'adg_days'
+.calc_base_phenotypes: no visible binding for global variable 'ADFI_g'
+.calc_base_phenotypes: no visible binding for global variable
+  'total_feed_g'
+.calc_base_phenotypes: no visible binding for global variable
+  'test_days'
+.calc_base_phenotypes: no visible binding for global variable 'FCR'
+.calc_phenotypes_by_age_stages : <anonymous>: no visible binding for
+  global variable 'age_days'
+.calc_phenotypes_by_age_stages : <anonymous>: no visible global
+  function definition for ':='
+.calc_phenotypes_by_age_stages : <anonymous>: no visible binding for
+  global variable 'stage_label'
+.calc_phenotypes_by_age_stages : <anonymous>: no visible binding for
+  global variable 'stage_min'
+.calc_phenotypes_by_age_stages : <anonymous>: no visible binding for
+  global variable 'stage_max'
+.calc_phenotypes_by_date_stages: no visible global function definition
+  for ':='
+.calc_phenotypes_by_date_stages : <anonymous>: no visible global
+  function definition for ':='
+.calc_phenotypes_by_date_stages : <anonymous>: no visible binding for
+  global variable 'stage_label'
+.calc_phenotypes_by_date_stages : <anonymous>: no visible binding for
+  global variable 'stage_start_date'
+.calc_phenotypes_by_date_stages : <anonymous>: no visible binding for
+  global variable 'stage_end_date'
+.calc_phenotypes_by_weight_stages: no visible global function
+  definition for ':='
+.calc_phenotypes_by_weight_stages: no visible binding for global
+  variable 'weight_kg'
+.calc_phenotypes_by_weight_stages: no visible binding for global
+  variable 'daily_weight_g'
+.calc_phenotypes_by_weight_stages : <anonymous>: no visible binding for
+  global variable 'weight_kg'
+.calc_phenotypes_by_weight_stages : <anonymous>: no visible global
+  function definition for ':='
+.calc_phenotypes_by_weight_stages : <anonymous>: no visible binding for
+  global variable 'stage_label'
+.calc_phenotypes_by_weight_stages : <anonymous>: no visible binding for
+  global variable 'stage_min'
+.calc_phenotypes_by_weight_stages : <anonymous>: no visible binding for
+  global variable 'stage_max'
+.calc_phenotypes_monitor: no visible global function definition for
+  ':='
+.calc_phenotypes_monitor: no visible binding for global variable
+  'weight_kg'
+.calc_phenotypes_monitor: no visible binding for global variable
+  'daily_weight_g'
+.calc_phenotypes_monitor: no visible binding for global variable
+  'feed_kg'
+.calc_phenotypes_monitor: no visible binding for global variable
+  'weight_diff'
+.calc_phenotypes_monitor: no visible binding for global variable
+  'ADG_rolling'
+.calc_phenotypes_monitor: no visible binding for global variable
+  'ADFI_rolling'
+.calc_phenotypes_monitor: no visible binding for global variable
+  'FCR_rolling_mean'
+.calc_phenotypes_monitor: no visible binding for global variable
+  'ADFI_rolling_mean_g'
+.calc_phenotypes_monitor: no visible binding for global variable
+  'ADG_rolling_mean_g'
+.calc_phenotypes_research: no visible global function definition for
+  ':='
+.calc_phenotypes_research: no visible binding for global variable
+  'day_num'
+.calc_phenotypes_research: no visible binding for global variable
+  'cum_feed_g'
+.calc_phenotypes_research : <anonymous>: no visible global function
+  definition for 'lm'
+.calc_phenotypes_research : <anonymous>: no visible global function
+  definition for 'coef'
+.calc_phenotypes_research : <anonymous>: no visible global function
+  definition for ':='
+.calc_phenotypes_research : <anonymous>: no visible binding for global
+  variable 'ADG_g_lm'
+.calc_phenotypes_research : <anonymous>: no visible binding for global
+  variable 'ADG_r2'
+.calc_phenotypes_research : <anonymous>: no visible binding for global
+  variable 'ADG_pval'
+.calc_phenotypes_research : <anonymous>: no visible binding for global
+  variable 'ADFI_g_lm'
+.calc_phenotypes_research : <anonymous>: no visible binding for global
+  variable 'ADFI_r2'
+.calc_phenotypes_research : <anonymous>: no visible binding for global
+  variable 'ADFI_pval'
+.calc_phenotypes_research: no visible binding for global variable
+  'FCR_lm'
+.calc_phenotypes_research: no visible binding for global variable
+  'ADFI_g_lm'
+.calc_phenotypes_research: no visible binding for global variable
+  'ADG_g_lm'
+.calc_phenotypes_standard_fcr: no visible binding for global variable
+  'daily_weight_g'
+.calc_phenotypes_standard_fcr: no visible global function definition
+  for ':='
+.calc_phenotypes_standard_fcr: no visible binding for global variable
+  'FCR_30_120kg'
+.calc_phenotypes_standard_fcr: no visible binding for global variable
+  'total_feed_g'
+.calc_phenotypes_standard_fcr: no visible binding for global variable
+  'feed_kg'
+.calc_phenotypes_standard_fcr: no visible binding for global variable
+  'weight_kg'
+.check_fcr_stages_v2: no visible global function definition for ':='
+.check_fcr_stages_v2: no visible binding for global variable
+  'weight_stage'
+.check_fcr_stages_v2: no visible binding for global variable
+  'weight_kg'
+.check_fcr_stages_v2: no visible binding for global variable 'fcr'
+.check_fcr_stages_v2: no visible binding for global variable
+  'total_feed'
+.check_fcr_stages_v2: no visible binding for global variable
+  'weight_gain'
+.check_fcr_stages_v2: no visible binding for global variable
+  'stage_label'
+.check_fcr_stages_v2: no visible binding for global variable
+  'weight_min'
+.check_fcr_stages_v2: no visible binding for global variable
+  'weight_max'
+.check_fcr_stages_v2: no visible binding for global variable 'fcr_min'
+.check_fcr_stages_v2: no visible binding for global variable 'fcr_max'
+.check_growth_fit: no visible global function definition for 'lm'
+.extrapolate_feed_with_fcr_v2: no visible global function definition
+  for ':='
+.extrapolate_feed_with_fcr_v2: no visible binding for global variable
+  'cum_feed'
+.extrapolate_feed_with_fcr_v2: no visible binding for global variable
+  'weight_kg'
+.extrapolate_feed_with_fcr_v2: no visible binding for global variable
+  'daily_weight_g'
+.extrapolate_feed_with_fcr_v2: no visible global function definition
+  for 'tail'
+.extrapolate_feed_with_fcr_v2: no visible global function definition
+  for 'head'
+.extrapolate_feed_with_fcr_v2: no visible binding for global variable
+  'flag_fcr_stage_invalid'
+.extrapolate_feed_with_fcr_v2: no visible binding for global variable
+  'flag_low_r2'
+.extrapolate_feed_with_fcr_v2: no visible binding for global variable
+  'pred_cum_feed'
+.extrapolate_feed_with_fcr_v2: no visible binding for global variable
+  '.SD'
+.extrapolate_feed_with_fcr_v2: no visible binding for global variable
+  'pred_daily_feed'
+.identify_bad_dates: no visible binding for global variable '.N'
+.identify_bad_dates: no visible binding for global variable
+  'outlier_count'
+.identify_bad_dates: no visible binding for global variable
+  'total_count'
+.impute_feed_legacy: no visible global function definition for ':='
+.impute_feed_legacy: no visible binding for global variable
+  'was_missing_feed'
+.impute_feed_national_v2: no visible global function definition for
+  ':='
+.impute_weight_legacy: no visible global function definition for ':='
+.impute_weight_legacy: no visible binding for global variable
+  'was_missing_weight'
+.impute_weight_legacy: no visible binding for global variable
+  'daily_weight_g'
+.impute_weight_national: no visible global function definition for ':='
+.impute_weight_national: no visible binding for global variable
+  'daily_weight_g'
+.init_qc_flags: no visible global function definition for ':='
+.map_fire_to_standard: no visible global function definition for ':='
+.map_fire_to_standard: no visible binding for global variable 'ID'
+.map_fire_to_standard: no visible binding for global variable
+  'Visit_time'
+.map_fire_to_standard: no visible binding for global variable
+  'End_time'
+.map_fire_to_standard: no visible binding for global variable
+  'Duration'
+.map_fire_to_standard: no visible binding for global variable
+  'Feed_intake'
+.map_fire_to_standard: no visible binding for global variable 'Weight'
+.map_fire_to_standard: no visible binding for global variable
+  'Location'
+.map_fire_to_standard: no visible binding for global variable 'AGE'
+.map_fire_to_standard: no visible binding for global variable 'DFI'
+.map_nedap_to_standard: no visible global function definition for ':='
+.map_nedap_to_standard: no visible binding for global variable 'ID'
+.map_nedap_to_standard: no visible binding for global variable
+  'Visit_time'
+.map_nedap_to_standard: no visible binding for global variable
+  'Duration'
+.map_nedap_to_standard: no visible binding for global variable
+  'End_time'
+.map_nedap_to_standard: no visible binding for global variable
+  'Feed_intake'
+.map_nedap_to_standard: no visible binding for global variable 'Weight'
+.map_nedap_to_standard: no visible binding for global variable
+  'Location'
+.map_nedap_to_standard: no visible binding for global variable 'AGE'
+.map_nedap_to_standard: no visible binding for global variable 'DFI'
+.map_yangxiang_to_standard: no visible global function definition for
+  ':='
+.map_yangxiang_to_standard: no visible binding for global variable 'ID'
+.map_yangxiang_to_standard: no visible binding for global variable
+  'Weight'
+.map_yangxiang_to_standard: no visible binding for global variable
+  'Feed_intake'
+.map_yangxiang_to_standard: no visible binding for global variable
+  'Duration'
+.map_yangxiang_to_standard: no visible binding for global variable
+  'Visit_time'
+.map_yangxiang_to_standard: no visible binding for global variable
+  'End_time'
+.map_yangxiang_to_standard: no visible binding for global variable
+  'AGE'
+.map_yangxiang_to_standard: no visible binding for global variable
+  'DFI'
+.map_yangxiang_to_standard: no visible binding for global variable
+  'Location'
+.plot_animal_2x2: no visible binding for global variable
+  'day_has_outlier_feed'
+.plot_animal_2x2: no visible binding for global variable
+  'day_has_outlier_wt'
+.plot_animal_2x2: no visible global function definition for ':='
+.qc_feed_standard_legacy: no visible global function definition for
+  ':='
+.qc_feed_standard_legacy: no visible binding for global variable
+  'flag_feed_out_of_range'
+.qc_feed_standard_legacy: no visible binding for global variable
+  'daily_total_feed'
+.qc_feed_standard_legacy: no visible global function definition for
+  'quantile'
+.qc_feed_standard_legacy: no visible binding for global variable
+  'is_outlier_day'
+.qc_feed_standard_legacy: no visible binding for global variable
+  'is_low_outlier'
+.qc_feed_standard_legacy: no visible binding for global variable
+  'is_high_outlier'
+.qc_feed_standard_legacy: no visible binding for global variable
+  'flag_percentile_low'
+.qc_feed_standard_legacy: no visible binding for global variable
+  'flag_percentile_high'
+.qc_feed_standard_national: no visible global function definition for
+  ':='
+.qc_feed_standard_national: no visible binding for global variable
+  'flag_duration_negative'
+.qc_feed_standard_national: no visible binding for global variable
+  'flag_duration_too_long'
+.qc_feed_standard_national: no visible binding for global variable
+  'flag_duration_zero_with_feed'
+.qc_feed_standard_national: no visible binding for global variable
+  'feed_speed'
+.qc_feed_standard_national: no visible binding for global variable
+  'flag_speed_too_slow'
+.qc_feed_standard_national: no visible binding for global variable
+  'flag_speed_too_fast'
+.qc_feed_standard_national: no visible binding for global variable
+  'flag_speed_extreme_low_feed'
+.qc_feed_standard_national: no visible binding for global variable
+  'flag_speed_zero_long_duration'
+.qc_feed_standard_national: no visible binding for global variable
+  'flag_feed_negative'
+.qc_feed_standard_national: no visible binding for global variable
+  'daily_threshold_feed'
+.qc_feed_standard_national: no visible global function definition for
+  'quantile'
+.qc_feed_standard_national: no visible binding for global variable
+  'daily_total_feed'
+.qc_feed_standard_national: no visible binding for global variable
+  'flag_feed_too_high'
+.qc_weight_standard_legacy: no visible global function definition for
+  ':='
+.qc_weight_standard_legacy: no visible binding for global variable
+  'flag_weight_out_of_range'
+.qc_weight_standard_legacy: no visible binding for global variable
+  '.sd_wt'
+.qc_weight_standard_legacy: no visible binding for global variable
+  '.mean_wt'
+.qc_weight_standard_legacy: no visible binding for global variable
+  'median_weight_per_day'
+.qc_weight_standard_legacy: no visible binding for global variable
+  'rlm_weight'
+.qc_weight_standard_legacy: no visible global function definition for
+  'predict'
+.qc_weight_standard_legacy: no visible binding for global variable
+  'flag_Gompertz_WT'
+.qc_weight_standard_national: no visible global function definition for
+  ':='
+.qc_weight_standard_national: no visible binding for global variable
+  'flag_Gompertz_WT'
+.qc_weight_standard_national: no visible binding for global variable
+  'flag_weight_out_of_range'
+.qc_weight_standard_national: no visible binding for global variable
+  'flag_outlier_single'
+.qc_weight_standard_national: no visible binding for global variable
+  'cleaned_weight'
+.qc_weight_standard_national: no visible binding for global variable
+  'rlm_weight'
+.qc_weight_standard_national: no visible binding for global variable
+  'rlm_weight_daily'
+.qc_weight_standard_national: no visible binding for global variable
+  'flag_daily_low'
+.qc_weight_standard_national: no visible binding for global variable
+  'flag_weight_low'
+.qc_weight_standard_national: no visible global function definition for
+  'predict'
+.qc_weight_standard_national: no visible binding for global variable
+  'flag_growth_curve_poor'
+.qc_weight_standard_national: no visible binding for global variable
+  'flag_daily_weight_low'
+.read_birth_info: no visible global function definition for ':='
+.read_yangxiang_file: no visible global function definition for ':='
+ZhenM_add_english_aliases: no visible global function definition for
+  ':='
+ZhenM_apply_bio_constraints: no visible global function definition for
+  ':='
+ZhenM_attach_measurement_day: no visible global function definition for
+  ':='
+ZhenM_calc_phenotypes_stage: no visible global function definition for
+  ':='
+ZhenM_calc_phenotypes_stage: no visible binding for global variable
+  '.N'
+ZhenM_calc_phenotypes_stage: no visible binding for global variable
+  '.SD'
+ZhenM_data_summary: no visible global function definition for ':='
+ZhenM_data_summary: no visible binding for global variable 'Visit_time'
+ZhenM_fill_down: no visible global function definition for ':='
+ZhenM_generate_qc_summary: no visible binding for global variable
+  'count'
+ZhenM_log_qc_stat: no visible global function definition for 'head'
+ZhenM_qc_overall: no visible global function definition for ':='
+ZhenM_qc_overall: no visible binding for global variable 'missing_rate'
+ZhenM_qc_overall: no visible binding for global variable 'n_test_days'
+ZhenM_qc_overall: no visible binding for global variable
+  'is_incomplete'
+ZhenM_qc_overall: no visible binding for global variable '.N'
+ZhenM_qc_overall: no visible binding for global variable '.I'
+ZhenM_qc_overall: no visible binding for global variable
+  'logic_invalid'
+ZhenM_read_data: no visible global function definition for ':='
+ZhenM_read_data: no visible binding for global variable
+  '.visit_time_na_flag'
+ZhenM_read_data: no visible binding for global variable 'Visit_time'
+ZhenM_read_data: no visible binding for global variable '.id_min_time'
+ZhenM_read_data: no visible binding for global variable 'ID'
+ZhenM_standard_to_daily: no visible global function definition for ':='
+ZhenM_standard_to_daily: no visible binding for global variable
+  'Visit_time'
+ZhenM_standard_to_daily: no visible global function definition for
+  'median'
+ZhenM_standard_to_daily: no visible binding for global variable
+  'Weight'
+ZhenM_standard_to_daily: no visible binding for global variable
+  'Feed_intake'
+ZhenM_standard_to_daily: no visible binding for global variable '.N'
+ZhenM_standard_to_daily: no visible binding for global variable
+  'Duration'
+ZhenM_standard_to_daily: no visible binding for global variable 'AGE'
+ZhenM_standard_to_daily: no visible binding for global variable
+  'Location'
+ZhenM_standard_to_daily: no visible binding for global variable 'ID'
+ZhenM_standard_to_daily_filtered: no visible global function definition
+  for ':='
+ZhenM_standard_to_daily_filtered: no visible binding for global
+  variable 'flag_feed_out_of_range'
+ZhenM_standard_to_daily_filtered: no visible binding for global
+  variable 'weighted_avg_weight_per_day'
+ZhenM_standard_to_daily_filtered: no visible binding for global
+  variable 'median_weight_per_day'
+ZhenM_standard_to_daily_filtered: no visible binding for global
+  variable 'weight_filtered'
+ZhenM_standard_to_daily_filtered: no visible binding for global
+  variable 'feed_filtered'
+ZhenM_standard_to_daily_filtered: no visible binding for global
+  variable '.age_val'
+ZhenM_standard_to_daily_filtered: no visible binding for global
+  variable '.dur_val'
+ZhenM_standard_to_daily_filtered: no visible binding for global
+  variable '.loc_val'
+ZhenM_standard_to_daily_filtered: no visible binding for global
+  variable '.N'
+ZhenM_standard_to_daily_filtered: no visible binding for global
+  variable 'breed'
+ZhenM_validate_standard_records: no visible global function definition
+  for ':='
+ZhenM_validate_standard_records: no visible binding for global variable
+  'Visit_time'
+ZhenM_validate_standard_records: no visible binding for global variable
+  'Weight'
+ZhenM_validate_standard_records: no visible binding for global variable
+  'Feed_intake'
+ZhenM_validate_standard_records: no visible binding for global variable
+  'Duration'
+ZhenM_validate_standard_records: no visible binding for global variable
+  'AGE'
+ZhenM_validate_standard_records: no visible binding for global variable
+  'DFI'
+ZhenM_write_plot_outputs: no visible global function definition for
+  ':='
+run_zhen_measure : run_impl: no visible global function definition for
+  ':='
+run_zhen_measure : run_impl: no visible binding for global variable
+  '..keep_cols'
+run_zhen_measure : run_impl: no visible binding for global variable
+  'daily_weight_g'
+run_zhen_measure : run_impl: no visible global function definition for
+  'head'
+run_zhen_measure : run_impl: no visible binding for global variable
+  'flag_growth_curve_poor'
+Undefined global functions or variables:
+  ..keep_cols .I .N .SD .age_val .dur_val .id_min_time .loc_val
+  .mean_wt .sd_wt .tmp_feed .tmp_wt .visit_time_na_flag := ADFI_g
+  ADFI_g_lm ADFI_pval ADFI_r2 ADFI_rolling ADFI_rolling_mean_g ADG_g
+  ADG_g_lm ADG_pval ADG_r2 ADG_rolling ADG_rolling_mean_g AGE DFI
+  Duration End_time FCR FCR_30_120kg FCR_lm FCR_rolling_mean
+  Feed_intake ID Location Visit_time Weight adg_days adg_g age_days
+  as.IDate as.formula breed cleaned_weight coef correction_g count
+  cum_feed cum_feed_g daily_feed_g_corrected daily_threshold_feed
+  daily_total_feed daily_weight_g day_has_outlier_feed
+  day_has_outlier_wt day_is_imputed_feed day_is_imputed_wt day_num
+  end_weight_g end_weight_kg fcr fcr_max fcr_min feed_filtered feed_kg
+  feed_speed flag_Gompertz_WT flag_daily_low flag_daily_weight_low
+  flag_duration_negative flag_duration_too_long
+  flag_duration_zero_with_feed flag_fcr_stage_invalid
+  flag_feed_negative flag_feed_out_of_range flag_feed_too_high
+  flag_growth_curve_poor flag_low_r2 flag_outlier_single
+  flag_percentile_high flag_percentile_low flag_speed_extreme_low_feed
+  flag_speed_too_fast flag_speed_too_slow flag_speed_zero_long_duration
+  flag_weight_low flag_weight_out_of_range head invalid_stages
+  is_feed_normal_record is_high_outlier is_incomplete is_low_outlier
+  is_outlier_day is_valid_range lm logic_invalid median
+  median_weight_per_day missing_rate n_stages n_test_days
+  n_valid_stages normal_feed_sum outlier_count pred_cum_feed
+  pred_daily_feed predict quantile rlm_weight rlm_weight_daily
+  stage_end_date stage_fcr_valid stage_feed stage_gain stage_label
+  stage_max stage_min stage_start_date start_weight_g start_weight_kg
+  tail test_days total_count total_feed total_feed_g was_missing_feed
+  was_missing_weight weight_diff weight_filtered weight_gain weight_kg
+  weight_max weight_min weight_stage weighted_avg_weight_per_day
+Consider adding
+  importFrom("stats", "as.formula", "coef", "lm", "median", "predict",
+             "quantile")
+  importFrom("utils", "head", "tail")
+to your NAMESPACE file.
+* checking Rd files ... OK
+* checking Rd metadata ... NOTE
+Rd文件不能有重复的别名'ZhenM_calc_phenotypes':
+  'ZhenM_calc_phenotypes.Rd' 'zhenm_data_interfaces.Rd'
+Rd文件不能有重复的别名'ZhenM_standard_record_fields':
+  'ZhenM_standard_record_fields.Rd' 'zhenm_data_interfaces.Rd'
+Rd文件不能有重复的别名'ZhenM_validate_standard_records':
+  'ZhenM_validate_standard_records.Rd' 'zhenm_data_interfaces.Rd'
+* checking Rd line widths ... OK
+* checking Rd cross-references ... OK
+* checking for missing documentation entries ... OK
+* checking for code/documentation mismatches ... WARNING
+Codoc mismatches from Rd file 'zhenm_data_interfaces.Rd':
+ZhenM_calc_phenotypes
+  编码: function(daily_records, phenotype_method = "standard_fcr",
+                 config = NULL, stage_mode = NULL, target_weight_stages
+                 = NULL, target_age_stages = NULL, target_date_stages =
+                 NULL)
+  文件: function(daily_records, phenotype_method = c("standard_fcr",
+                 "report", "monitor", "research"), config = NULL,
+                 stage_mode = NULL, target_weight_stages = NULL,
+                 target_age_stages = NULL, target_date_stages = NULL)
+  参数默认配合错误:
+    Name: 'phenotype_method' Code: "standard_fcr" Docs: c("standard_fcr", "report", "monitor", "research")
+* checking Rd \usage sections ... WARNING
+Undocumented arguments in Rd file 'ZhenM_impute_national.Rd'
+  'daily_records' 'config'
+Functions with \usage entries need to have the appropriate \alias
+entries, and all their arguments documented.
+The \usage entries must correspond to syntactically valid R code.
+See chapter 'Writing R documentation files' in the 'Writing R
+Extensions' manual.
+* checking Rd contents ... OK
+* checking for unstated dependencies in examples ... OK
+* checking installed files from 'inst/doc' ... OK
+* checking files in 'vignettes' ... SKIPPED
+* checking examples ... OK
+* checking for unstated dependencies in 'tests' ... OK
+* checking tests ...
+  Running 'testthat.R'
+ ERROR
+Running the tests in 'tests/testthat.R' failed.
+Last 13 lines of output:
+          collapse = ";"), n_outlier_wt = sum(is_outlier_wt == 
+          TRUE, na.rm = TRUE), n_outlier_feed = sum(is_outlier_feed == 
+          TRUE, na.rm = TRUE), has_feed_out_of_range_today = any(flag_feed_out_of_range == 
+          TRUE, na.rm = TRUE)), by = c(id_col, "record_date"))`: Column 2 of j's result for the first group is NULL. We rely on the column types of the first result to decide the type expected for the remaining groups (and require consistency). NULL columns are acceptable for later groups (and those are replaced with NA of appropriate type and recycled) but not for the first. Please use a typed empty vector instead, such as integer() or numeric().
+  Backtrace:
+      ▆
+   1. └─ZhenMeasure::ZhenM_standard_to_daily_filtered(dt) at test-qc.R:61:3
+   2.   ├─...[]
+   3.   └─data.table:::`[.data.table`(...)
+  ── Error ('test-standard-schema.R:36:3'): ZhenM_daily_aggregate aggregates daily metrics ──
+  Error in `ZhenM_daily_aggregate(dt)`: could not find function "ZhenM_daily_aggregate"
+  
+  [ FAIL 20 | WARN 0 | SKIP 2 | PASS 37 ]
+  Error: Test failures
+  Execution halted
+* checking for non-standard things in the check directory ... OK
+* checking for detritus in the temp directory ... OK
+* DONE
+
+Status: 1 ERROR, 3 WARNINGs, 5 NOTEs
+See
+  'C:/Users/yhliao/AppData/Local/Temp/claude/RtmpwbHD1P/file9607a03523c/ZhenMeasure.Rcheck/00check.log'
+for details.
+
+
+── R CMD check results ────────────────────────────────────────────────────────────────────────── ZhenMeasure 0.2.4 ────
+Duration: 4m 59s
+
+❯ checking tests ...
+  See below...
+
+❯ checking code files for non-ASCII characters ... WARNING
+  Found the following files with non-ASCII characters:
+    R/run_zhen_measure.R
+    R/zhenm_logging.R
+    R/zhenm_qc_utils.R
+    R/zhenm_qc_weight_standard.R
+    R/zhenm_read_data.R
+    R/zhenm_read_utils.R
+    R/zhenm_write_outputs.R
+  Portable packages must use only ASCII characters in their R code and
+  NAMESPACE directives, except perhaps in comments.
+  Use \uxxxx escapes for other characters.
+  Function 'tools::showNonASCIIfile' can help in finding non-ASCII
+  characters in files.
+
+❯ checking for code/documentation mismatches ... WARNING
+  Codoc mismatches from Rd file 'zhenm_data_interfaces.Rd':
+  ZhenM_calc_phenotypes
+    编码: function(daily_records, phenotype_method = "standard_fcr",
+                   config = NULL, stage_mode = NULL, target_weight_stages
+                   = NULL, target_age_stages = NULL, target_date_stages =
+                   NULL)
+    文件: function(daily_records, phenotype_method = c("standard_fcr",
+                   "report", "monitor", "research"), config = NULL,
+                   stage_mode = NULL, target_weight_stages = NULL,
+                   target_age_stages = NULL, target_date_stages = NULL)
+    参数默认配合错误:
+      Name: 'phenotype_method' Code: "standard_fcr" Docs: c("standard_fcr", "report", "monitor", "research")
+
+❯ checking Rd \usage sections ... WARNING
+  Undocumented arguments in Rd file 'ZhenM_impute_national.Rd'
+    'daily_records' 'config'
+  
+  Functions with \usage entries need to have the appropriate \alias
+  entries, and all their arguments documented.
+  The \usage entries must correspond to syntactically valid R code.
+  See chapter 'Writing R documentation files' in the 'Writing R
+  Extensions' manual.
+
+❯ checking for future file timestamps ... NOTE
+  unable to verify current time
+
+❯ checking top-level files ... NOTE
+  Non-standard file/directory found at top level:
+    'build-output'
+
+❯ checking dependencies in R code ... NOTE
+  Namespaces in Imports field not imported from:
+    'nlme' 'quantreg' 'splines'
+    All declared Imports should be used.
+
+❯ checking R code for possible problems ... NOTE
+  .add_stage_fcr_qc: no visible global function definition for ':='
+  .add_stage_fcr_qc: no visible binding for global variable
+    'weight_stage'
+  .add_stage_fcr_qc: no visible binding for global variable 'weight_kg'
+  .add_stage_fcr_qc: no visible binding for global variable 'feed_kg'
+  .add_stage_fcr_qc: no visible binding for global variable '.N'
+  .add_stage_fcr_qc: no visible binding for global variable 'stage_gain'
+  .add_stage_fcr_qc: no visible binding for global variable 'stage_feed'
+  .add_stage_fcr_qc: no visible binding for global variable 'stage_label'
+  .add_stage_fcr_qc: no visible binding for global variable 'weight_min'
+  .add_stage_fcr_qc: no visible binding for global variable 'weight_max'
+  .add_stage_fcr_qc: no visible binding for global variable
+    'stage_fcr_valid'
+  .add_stage_fcr_qc: no visible binding for global variable 'fcr_min'
+  .add_stage_fcr_qc: no visible binding for global variable 'fcr_max'
+  .add_stage_fcr_qc: no visible binding for global variable
+    'invalid_stages'
+  .add_stage_fcr_qc: no visible binding for global variable
+    'flag_fcr_stage_invalid'
+  .add_stage_fcr_qc: no visible binding for global variable
+    'n_valid_stages'
+  .add_stage_fcr_qc: no visible binding for global variable 'n_stages'
+  .annotate_raw_daily_flags: no visible global function definition for
+    ':='
+  .annotate_raw_daily_flags: no visible binding for global variable
+    'day_has_outlier_wt'
+  .annotate_raw_daily_flags: no visible binding for global variable
+    'day_has_outlier_feed'
+  .annotate_raw_daily_flags: no visible binding for global variable
+    'day_is_imputed_wt'
+  .annotate_raw_daily_flags: no visible binding for global variable
+    'day_is_imputed_feed'
+  .apply_feed_lmm_correction: no visible global function definition for
+    ':='
+  .apply_feed_lmm_correction: no visible binding for global variable
+    'is_feed_normal_record'
+  .apply_feed_lmm_correction: no visible binding for global variable
+    '.SD'
+  .apply_feed_lmm_correction: no visible binding for global variable
+    'normal_feed_sum'
+  .apply_feed_lmm_correction: no visible binding for global variable
+    'adg_g'
+  .apply_feed_lmm_correction: no visible binding for global variable
+    'daily_weight_g'
+  .apply_feed_lmm_correction: no visible global function definition for
+    'as.formula'
+  .apply_feed_lmm_correction: no visible binding for global variable
+    'correction_g'
+  .apply_feed_lmm_correction: no visible binding for global variable
+    'daily_feed_g_corrected'
+  .apply_test_weight_range_filter: no visible global function definition
+    for ':='
+  .apply_test_weight_range_filter: no visible binding for global variable
+    'start_weight_kg'
+  .apply_test_weight_range_filter: no visible binding for global variable
+    'end_weight_kg'
+  .apply_test_weight_range_filter: no visible binding for global variable
+    'is_valid_range'
+  .apply_test_weight_range_filter: no visible global function definition
+    for 'head'
+  .build_raw_daily: no visible global function definition for ':='
+  .build_raw_daily: no visible binding for global variable '.tmp_feed'
+  .build_raw_daily: no visible binding for global variable '.tmp_wt'
+  .build_raw_daily: no visible binding for global variable '.N'
+  .calc_base_phenotypes: no visible global function definition for
+    'as.IDate'
+  .calc_base_phenotypes: no visible binding for global variable '.SD'
+  .calc_base_phenotypes: no visible global function definition for ':='
+  .calc_base_phenotypes: no visible binding for global variable 'ADG_g'
+  .calc_base_phenotypes: no visible binding for global variable
+    'end_weight_g'
+  .calc_base_phenotypes: no visible binding for global variable
+    'start_weight_g'
+  .calc_base_phenotypes: no visible binding for global variable
+    'adg_days'
+  .calc_base_phenotypes: no visible binding for global variable 'ADFI_g'
+  .calc_base_phenotypes: no visible binding for global variable
+    'total_feed_g'
+  .calc_base_phenotypes: no visible binding for global variable
+    'test_days'
+  .calc_base_phenotypes: no visible binding for global variable 'FCR'
+  .calc_phenotypes_by_age_stages : <anonymous>: no visible binding for
+    global variable 'age_days'
+  .calc_phenotypes_by_age_stages : <anonymous>: no visible global
+    function definition for ':='
+  .calc_phenotypes_by_age_stages : <anonymous>: no visible binding for
+    global variable 'stage_label'
+  .calc_phenotypes_by_age_stages : <anonymous>: no visible binding for
+    global variable 'stage_min'
+  .calc_phenotypes_by_age_stages : <anonymous>: no visible binding for
+    global variable 'stage_max'
+  .calc_phenotypes_by_date_stages: no visible global function definition
+    for ':='
+  .calc_phenotypes_by_date_stages : <anonymous>: no visible global
+    function definition for ':='
+  .calc_phenotypes_by_date_stages : <anonymous>: no visible binding for
+    global variable 'stage_label'
+  .calc_phenotypes_by_date_stages : <anonymous>: no visible binding for
+    global variable 'stage_start_date'
+  .calc_phenotypes_by_date_stages : <anonymous>: no visible binding for
+    global variable 'stage_end_date'
+  .calc_phenotypes_by_weight_stages: no visible global function
+    definition for ':='
+  .calc_phenotypes_by_weight_stages: no visible binding for global
+    variable 'weight_kg'
+  .calc_phenotypes_by_weight_stages: no visible binding for global
+    variable 'daily_weight_g'
+  .calc_phenotypes_by_weight_stages : <anonymous>: no visible binding for
+    global variable 'weight_kg'
+  .calc_phenotypes_by_weight_stages : <anonymous>: no visible global
+    function definition for ':='
+  .calc_phenotypes_by_weight_stages : <anonymous>: no visible binding for
+    global variable 'stage_label'
+  .calc_phenotypes_by_weight_stages : <anonymous>: no visible binding for
+    global variable 'stage_min'
+  .calc_phenotypes_by_weight_stages : <anonymous>: no visible binding for
+    global variable 'stage_max'
+  .calc_phenotypes_monitor: no visible global function definition for
+    ':='
+  .calc_phenotypes_monitor: no visible binding for global variable
+    'weight_kg'
+  .calc_phenotypes_monitor: no visible binding for global variable
+    'daily_weight_g'
+  .calc_phenotypes_monitor: no visible binding for global variable
+    'feed_kg'
+  .calc_phenotypes_monitor: no visible binding for global variable
+    'weight_diff'
+  .calc_phenotypes_monitor: no visible binding for global variable
+    'ADG_rolling'
+  .calc_phenotypes_monitor: no visible binding for global variable
+    'ADFI_rolling'
+  .calc_phenotypes_monitor: no visible binding for global variable
+    'FCR_rolling_mean'
+  .calc_phenotypes_monitor: no visible binding for global variable
+    'ADFI_rolling_mean_g'
+  .calc_phenotypes_monitor: no visible binding for global variable
+    'ADG_rolling_mean_g'
+  .calc_phenotypes_research: no visible global function definition for
+    ':='
+  .calc_phenotypes_research: no visible binding for global variable
+    'day_num'
+  .calc_phenotypes_research: no visible binding for global variable
+    'cum_feed_g'
+  .calc_phenotypes_research : <anonymous>: no visible global function
+    definition for 'lm'
+  .calc_phenotypes_research : <anonymous>: no visible global function
+    definition for 'coef'
+  .calc_phenotypes_research : <anonymous>: no visible global function
+    definition for ':='
+  .calc_phenotypes_research : <anonymous>: no visible binding for global
+    variable 'ADG_g_lm'
+  .calc_phenotypes_research : <anonymous>: no visible binding for global
+    variable 'ADG_r2'
+  .calc_phenotypes_research : <anonymous>: no visible binding for global
+    variable 'ADG_pval'
+  .calc_phenotypes_research : <anonymous>: no visible binding for global
+    variable 'ADFI_g_lm'
+  .calc_phenotypes_research : <anonymous>: no visible binding for global
+    variable 'ADFI_r2'
+  .calc_phenotypes_research : <anonymous>: no visible binding for global
+    variable 'ADFI_pval'
+  .calc_phenotypes_research: no visible binding for global variable
+    'FCR_lm'
+  .calc_phenotypes_research: no visible binding for global variable
+    'ADFI_g_lm'
+  .calc_phenotypes_research: no visible binding for global variable
+    'ADG_g_lm'
+  .calc_phenotypes_standard_fcr: no visible binding for global variable
+    'daily_weight_g'
+  .calc_phenotypes_standard_fcr: no visible global function definition
+    for ':='
+  .calc_phenotypes_standard_fcr: no visible binding for global variable
+    'FCR_30_120kg'
+  .calc_phenotypes_standard_fcr: no visible binding for global variable
+    'total_feed_g'
+  .calc_phenotypes_standard_fcr: no visible binding for global variable
+    'feed_kg'
+  .calc_phenotypes_standard_fcr: no visible binding for global variable
+    'weight_kg'
+  .check_fcr_stages_v2: no visible global function definition for ':='
+  .check_fcr_stages_v2: no visible binding for global variable
+    'weight_stage'
+  .check_fcr_stages_v2: no visible binding for global variable
+    'weight_kg'
+  .check_fcr_stages_v2: no visible binding for global variable 'fcr'
+  .check_fcr_stages_v2: no visible binding for global variable
+    'total_feed'
+  .check_fcr_stages_v2: no visible binding for global variable
+    'weight_gain'
+  .check_fcr_stages_v2: no visible binding for global variable
+    'stage_label'
+  .check_fcr_stages_v2: no visible binding for global variable
+    'weight_min'
+  .check_fcr_stages_v2: no visible binding for global variable
+    'weight_max'
+  .check_fcr_stages_v2: no visible binding for global variable 'fcr_min'
+  .check_fcr_stages_v2: no visible binding for global variable 'fcr_max'
+  .check_growth_fit: no visible global function definition for 'lm'
+  .extrapolate_feed_with_fcr_v2: no visible global function definition
+    for ':='
+  .extrapolate_feed_with_fcr_v2: no visible binding for global variable
+    'cum_feed'
+  .extrapolate_feed_with_fcr_v2: no visible binding for global variable
+    'weight_kg'
+  .extrapolate_feed_with_fcr_v2: no visible binding for global variable
+    'daily_weight_g'
+  .extrapolate_feed_with_fcr_v2: no visible global function definition
+    for 'tail'
+  .extrapolate_feed_with_fcr_v2: no visible global function definition
+    for 'head'
+  .extrapolate_feed_with_fcr_v2: no visible binding for global variable
+    'flag_fcr_stage_invalid'
+  .extrapolate_feed_with_fcr_v2: no visible binding for global variable
+    'flag_low_r2'
+  .extrapolate_feed_with_fcr_v2: no visible binding for global variable
+    'pred_cum_feed'
+  .extrapolate_feed_with_fcr_v2: no visible binding for global variable
+    '.SD'
+  .extrapolate_feed_with_fcr_v2: no visible binding for global variable
+    'pred_daily_feed'
+  .identify_bad_dates: no visible binding for global variable '.N'
+  .identify_bad_dates: no visible binding for global variable
+    'outlier_count'
+  .identify_bad_dates: no visible binding for global variable
+    'total_count'
+  .impute_feed_legacy: no visible global function definition for ':='
+  .impute_feed_legacy: no visible binding for global variable
+    'was_missing_feed'
+  .impute_feed_national_v2: no visible global function definition for
+    ':='
+  .impute_weight_legacy: no visible global function definition for ':='
+  .impute_weight_legacy: no visible binding for global variable
+    'was_missing_weight'
+  .impute_weight_legacy: no visible binding for global variable
+    'daily_weight_g'
+  .impute_weight_national: no visible global function definition for ':='
+  .impute_weight_national: no visible binding for global variable
+    'daily_weight_g'
+  .init_qc_flags: no visible global function definition for ':='
+  .map_fire_to_standard: no visible global function definition for ':='
+  .map_fire_to_standard: no visible binding for global variable 'ID'
+  .map_fire_to_standard: no visible binding for global variable
+    'Visit_time'
+  .map_fire_to_standard: no visible binding for global variable
+    'End_time'
+  .map_fire_to_standard: no visible binding for global variable
+    'Duration'
+  .map_fire_to_standard: no visible binding for global variable
+    'Feed_intake'
+  .map_fire_to_standard: no visible binding for global variable 'Weight'
+  .map_fire_to_standard: no visible binding for global variable
+    'Location'
+  .map_fire_to_standard: no visible binding for global variable 'AGE'
+  .map_fire_to_standard: no visible binding for global variable 'DFI'
+  .map_nedap_to_standard: no visible global function definition for ':='
+  .map_nedap_to_standard: no visible binding for global variable 'ID'
+  .map_nedap_to_standard: no visible binding for global variable
+    'Visit_time'
+  .map_nedap_to_standard: no visible binding for global variable
+    'Duration'
+  .map_nedap_to_standard: no visible binding for global variable
+    'End_time'
+  .map_nedap_to_standard: no visible binding for global variable
+    'Feed_intake'
+  .map_nedap_to_standard: no visible binding for global variable 'Weight'
+  .map_nedap_to_standard: no visible binding for global variable
+    'Location'
+  .map_nedap_to_standard: no visible binding for global variable 'AGE'
+  .map_nedap_to_standard: no visible binding for global variable 'DFI'
+  .map_yangxiang_to_standard: no visible global function definition for
+    ':='
+  .map_yangxiang_to_standard: no visible binding for global variable 'ID'
+  .map_yangxiang_to_standard: no visible binding for global variable
+    'Weight'
+  .map_yangxiang_to_standard: no visible binding for global variable
+    'Feed_intake'
+  .map_yangxiang_to_standard: no visible binding for global variable
+    'Duration'
+  .map_yangxiang_to_standard: no visible binding for global variable
+    'Visit_time'
+  .map_yangxiang_to_standard: no visible binding for global variable
+    'End_time'
+  .map_yangxiang_to_standard: no visible binding for global variable
+    'AGE'
+  .map_yangxiang_to_standard: no visible binding for global variable
+    'DFI'
+  .map_yangxiang_to_standard: no visible binding for global variable
+    'Location'
+  .plot_animal_2x2: no visible binding for global variable
+    'day_has_outlier_feed'
+  .plot_animal_2x2: no visible binding for global variable
+    'day_has_outlier_wt'
+  .plot_animal_2x2: no visible global function definition for ':='
+  .qc_feed_standard_legacy: no visible global function definition for
+    ':='
+  .qc_feed_standard_legacy: no visible binding for global variable
+    'flag_feed_out_of_range'
+  .qc_feed_standard_legacy: no visible binding for global variable
+    'daily_total_feed'
+  .qc_feed_standard_legacy: no visible global function definition for
+    'quantile'
+  .qc_feed_standard_legacy: no visible binding for global variable
+    'is_outlier_day'
+  .qc_feed_standard_legacy: no visible binding for global variable
+    'is_low_outlier'
+  .qc_feed_standard_legacy: no visible binding for global variable
+    'is_high_outlier'
+  .qc_feed_standard_legacy: no visible binding for global variable
+    'flag_percentile_low'
+  .qc_feed_standard_legacy: no visible binding for global variable
+    'flag_percentile_high'
+  .qc_feed_standard_national: no visible global function definition for
+    ':='
+  .qc_feed_standard_national: no visible binding for global variable
+    'flag_duration_negative'
+  .qc_feed_standard_national: no visible binding for global variable
+    'flag_duration_too_long'
+  .qc_feed_standard_national: no visible binding for global variable
+    'flag_duration_zero_with_feed'
+  .qc_feed_standard_national: no visible binding for global variable
+    'feed_speed'
+  .qc_feed_standard_national: no visible binding for global variable
+    'flag_speed_too_slow'
+  .qc_feed_standard_national: no visible binding for global variable
+    'flag_speed_too_fast'
+  .qc_feed_standard_national: no visible binding for global variable
+    'flag_speed_extreme_low_feed'
+  .qc_feed_standard_national: no visible binding for global variable
+    'flag_speed_zero_long_duration'
+  .qc_feed_standard_national: no visible binding for global variable
+    'flag_feed_negative'
+  .qc_feed_standard_national: no visible binding for global variable
+    'daily_threshold_feed'
+  .qc_feed_standard_national: no visible global function definition for
+    'quantile'
+  .qc_feed_standard_national: no visible binding for global variable
+    'daily_total_feed'
+  .qc_feed_standard_national: no visible binding for global variable
+    'flag_feed_too_high'
+  .qc_weight_standard_legacy: no visible global function definition for
+    ':='
+  .qc_weight_standard_legacy: no visible binding for global variable
+    'flag_weight_out_of_range'
+  .qc_weight_standard_legacy: no visible binding for global variable
+    '.sd_wt'
+  .qc_weight_standard_legacy: no visible binding for global variable
+    '.mean_wt'
+  .qc_weight_standard_legacy: no visible binding for global variable
+    'median_weight_per_day'
+  .qc_weight_standard_legacy: no visible binding for global variable
+    'rlm_weight'
+  .qc_weight_standard_legacy: no visible global function definition for
+    'predict'
+  .qc_weight_standard_legacy: no visible binding for global variable
+    'flag_Gompertz_WT'
+  .qc_weight_standard_national: no visible global function definition for
+    ':='
+  .qc_weight_standard_national: no visible binding for global variable
+    'flag_Gompertz_WT'
+  .qc_weight_standard_national: no visible binding for global variable
+    'flag_weight_out_of_range'
+  .qc_weight_standard_national: no visible binding for global variable
+    'flag_outlier_single'
+  .qc_weight_standard_national: no visible binding for global variable
+    'cleaned_weight'
+  .qc_weight_standard_national: no visible binding for global variable
+    'rlm_weight'
+  .qc_weight_standard_national: no visible binding for global variable
+    'rlm_weight_daily'
+  .qc_weight_standard_national: no visible binding for global variable
+    'flag_daily_low'
+  .qc_weight_standard_national: no visible binding for global variable
+    'flag_weight_low'
+  .qc_weight_standard_national: no visible global function definition for
+    'predict'
+  .qc_weight_standard_national: no visible binding for global variable
+    'flag_growth_curve_poor'
+  .qc_weight_standard_national: no visible binding for global variable
+    'flag_daily_weight_low'
+  .read_birth_info: no visible global function definition for ':='
+  .read_yangxiang_file: no visible global function definition for ':='
+  ZhenM_add_english_aliases: no visible global function definition for
+    ':='
+  ZhenM_apply_bio_constraints: no visible global function definition for
+    ':='
+  ZhenM_attach_measurement_day: no visible global function definition for
+    ':='
+  ZhenM_calc_phenotypes_stage: no visible global function definition for
+    ':='
+  ZhenM_calc_phenotypes_stage: no visible binding for global variable
+    '.N'
+  ZhenM_calc_phenotypes_stage: no visible binding for global variable
+    '.SD'
+  ZhenM_data_summary: no visible global function definition for ':='
+  ZhenM_data_summary: no visible binding for global variable 'Visit_time'
+  ZhenM_fill_down: no visible global function definition for ':='
+  ZhenM_generate_qc_summary: no visible binding for global variable
+    'count'
+  ZhenM_log_qc_stat: no visible global function definition for 'head'
+  ZhenM_qc_overall: no visible global function definition for ':='
+  ZhenM_qc_overall: no visible binding for global variable 'missing_rate'
+  ZhenM_qc_overall: no visible binding for global variable 'n_test_days'
+  ZhenM_qc_overall: no visible binding for global variable
+    'is_incomplete'
+  ZhenM_qc_overall: no visible binding for global variable '.N'
+  ZhenM_qc_overall: no visible binding for global variable '.I'
+  ZhenM_qc_overall: no visible binding for global variable
+    'logic_invalid'
+  ZhenM_read_data: no visible global function definition for ':='
+  ZhenM_read_data: no visible binding for global variable
+    '.visit_time_na_flag'
+  ZhenM_read_data: no visible binding for global variable 'Visit_time'
+  ZhenM_read_data: no visible binding for global variable '.id_min_time'
+  ZhenM_read_data: no visible binding for global variable 'ID'
+  ZhenM_standard_to_daily: no visible global function definition for ':='
+  ZhenM_standard_to_daily: no visible binding for global variable
+    'Visit_time'
+  ZhenM_standard_to_daily: no visible global function definition for
+    'median'
+  ZhenM_standard_to_daily: no visible binding for global variable
+    'Weight'
+  ZhenM_standard_to_daily: no visible binding for global variable
+    'Feed_intake'
+  ZhenM_standard_to_daily: no visible binding for global variable '.N'
+  ZhenM_standard_to_daily: no visible binding for global variable
+    'Duration'
+  ZhenM_standard_to_daily: no visible binding for global variable 'AGE'
+  ZhenM_standard_to_daily: no visible binding for global variable
+    'Location'
+  ZhenM_standard_to_daily: no visible binding for global variable 'ID'
+  ZhenM_standard_to_daily_filtered: no visible global function definition
+    for ':='
+  ZhenM_standard_to_daily_filtered: no visible binding for global
+    variable 'flag_feed_out_of_range'
+  ZhenM_standard_to_daily_filtered: no visible binding for global
+    variable 'weighted_avg_weight_per_day'
+  ZhenM_standard_to_daily_filtered: no visible binding for global
+    variable 'median_weight_per_day'
+  ZhenM_standard_to_daily_filtered: no visible binding for global
+    variable 'weight_filtered'
+  ZhenM_standard_to_daily_filtered: no visible binding for global
+    variable 'feed_filtered'
+  ZhenM_standard_to_daily_filtered: no visible binding for global
+    variable '.age_val'
+  ZhenM_standard_to_daily_filtered: no visible binding for global
+    variable '.dur_val'
+  ZhenM_standard_to_daily_filtered: no visible binding for global
+    variable '.loc_val'
+  ZhenM_standard_to_daily_filtered: no visible binding for global
+    variable '.N'
+  ZhenM_standard_to_daily_filtered: no visible binding for global
+    variable 'breed'
+  ZhenM_validate_standard_records: no visible global function definition
+    for ':='
+  ZhenM_validate_standard_records: no visible binding for global variable
+    'Visit_time'
+  ZhenM_validate_standard_records: no visible binding for global variable
+    'Weight'
+  ZhenM_validate_standard_records: no visible binding for global variable
+    'Feed_intake'
+  ZhenM_validate_standard_records: no visible binding for global variable
+    'Duration'
+  ZhenM_validate_standard_records: no visible binding for global variable
+    'AGE'
+  ZhenM_validate_standard_records: no visible binding for global variable
+    'DFI'
+  ZhenM_write_plot_outputs: no visible global function definition for
+    ':='
+  run_zhen_measure : run_impl: no visible global function definition for
+    ':='
+  run_zhen_measure : run_impl: no visible binding for global variable
+    '..keep_cols'
+  run_zhen_measure : run_impl: no visible binding for global variable
+    'daily_weight_g'
+  run_zhen_measure : run_impl: no visible global function definition for
+    'head'
+  run_zhen_measure : run_impl: no visible binding for global variable
+    'flag_growth_curve_poor'
+  Undefined global functions or variables:
+    ..keep_cols .I .N .SD .age_val .dur_val .id_min_time .loc_val
+    .mean_wt .sd_wt .tmp_feed .tmp_wt .visit_time_na_flag := ADFI_g
+    ADFI_g_lm ADFI_pval ADFI_r2 ADFI_rolling ADFI_rolling_mean_g ADG_g
+    ADG_g_lm ADG_pval ADG_r2 ADG_rolling ADG_rolling_mean_g AGE DFI
+    Duration End_time FCR FCR_30_120kg FCR_lm FCR_rolling_mean
+    Feed_intake ID Location Visit_time Weight adg_days adg_g age_days
+    as.IDate as.formula breed cleaned_weight coef correction_g count
+    cum_feed cum_feed_g daily_feed_g_corrected daily_threshold_feed
+    daily_total_feed daily_weight_g day_has_outlier_feed
+    day_has_outlier_wt day_is_imputed_feed day_is_imputed_wt day_num
+    end_weight_g end_weight_kg fcr fcr_max fcr_min feed_filtered feed_kg
+    feed_speed flag_Gompertz_WT flag_daily_low flag_daily_weight_low
+    flag_duration_negative flag_duration_too_long
+    flag_duration_zero_with_feed flag_fcr_stage_invalid
+    flag_feed_negative flag_feed_out_of_range flag_feed_too_high
+    flag_growth_curve_poor flag_low_r2 flag_outlier_single
+    flag_percentile_high flag_percentile_low flag_speed_extreme_low_feed
+    flag_speed_too_fast flag_speed_too_slow flag_speed_zero_long_duration
+    flag_weight_low flag_weight_out_of_range head invalid_stages
+    is_feed_normal_record is_high_outlier is_incomplete is_low_outlier
+    is_outlier_day is_valid_range lm logic_invalid median
+    median_weight_per_day missing_rate n_stages n_test_days
+    n_valid_stages normal_feed_sum outlier_count pred_cum_feed
+    pred_daily_feed predict quantile rlm_weight rlm_weight_daily
+    stage_end_date stage_fcr_valid stage_feed stage_gain stage_label
+    stage_max stage_min stage_start_date start_weight_g start_weight_kg
+    tail test_days total_count total_feed total_feed_g was_missing_feed
+    was_missing_weight weight_diff weight_filtered weight_gain weight_kg
+    weight_max weight_min weight_stage weighted_avg_weight_per_day
+  Consider adding
+    importFrom("stats", "as.formula", "coef", "lm", "median", "predict",
+               "quantile")
+    importFrom("utils", "head", "tail")
+  to your NAMESPACE file.
+
+❯ checking Rd metadata ... NOTE
+  Rd文件不能有重复的别名'ZhenM_calc_phenotypes':
+    'ZhenM_calc_phenotypes.Rd' 'zhenm_data_interfaces.Rd'
+  Rd文件不能有重复的别名'ZhenM_standard_record_fields':
+    'ZhenM_standard_record_fields.Rd' 'zhenm_data_interfaces.Rd'
+  Rd文件不能有重复的别名'ZhenM_validate_standard_records':
+    'ZhenM_validate_standard_records.Rd' 'zhenm_data_interfaces.Rd'
+
+── Test failures ───────────────────────────────────────────────────────────────────────────────────────── testthat ────
+
+> library(testthat)
+> library(ZhenMeasure)
+> 
+> test_check("ZhenMeasure")
+  Written: growth_curves.pdf (2 animals)
+Generating 2 individual growth curve PDFs...
+  Written: 2 PDFs in growth_curves/
+Weight QC (National-Standard): out_of_range=0, weight_low=0, daily_wt_low=0, growth_curve_poor=0, Gompertz=0, test_range_removed=30. Total outliers=0
+Weight QC (Legacy-Standard): out_of_range=0, SD_WT=0, RLM=0, Gompertz=0, test_range_removed=30. Total outliers=0
+Feed QC (National-Standard): feed_negative=1, feed_too_high=1, duration_negative=0, duration_too_long=0, duration_zero=0, speed_slow=1, speed_fast=1, speed_extreme=0, speed_zero_long=0, STL=0. Total outliers=2
+[ FAIL 20 | WARN 0 | SKIP 2 | PASS 37 ]
+
+══ Skipped tests (2) ═══════════════════════════════════════════════════════════
+• Baseline file not found. Run setup script first. (1): 'test-regression.R:5:3'
+• Not implemented yet (1): 'test-regression.R:19:3'
+
+══ Failed tests ════════════════════════════════════════════════════════════════
+── Error ('test-birth-info.R:8:3'): ZhenM_read_birth_info reads csv and standardizes columns ──
+Error in `ZhenM_read_birth_info(birth_file)`: could not find function "ZhenM_read_birth_info"
+── Error ('test-birth-info.R:28:3'): ZhenM_apply_birth_info generates age_day ──
+Error in `ZhenM_apply_birth_info(dt, birth_info)`: could not find function "ZhenM_apply_birth_info"
+── Failure ('test-data-format.R:14:3'): ZhenM_parse_data_format parses positions and labels ──
+parsed$id_col_pos (`actual`) not equal to 6L (`expected`).
+
+`actual` is NULL
+`expected` is an integer vector (6)
+── Failure ('test-data-format.R:15:3'): ZhenM_parse_data_format parses positions and labels ──
+parsed$character_col_pos (`actual`) not equal to c(2L, 3L) (`expected`).
+
+`actual` is NULL
+`expected` is an integer vector (2, 3)
+── Failure ('test-data-format.R:16:3'): ZhenM_parse_data_format parses positions and labels ──
+parsed$numeric_col_labels (`actual`) not equal to c("weight_g", "feed_g", "daily_feed_g") (`expected`).
+
+`actual` is NULL
+`expected` is a character vector ('weight_g', 'feed_g', 'daily_feed_g')
+── Failure ('test-data-format.R:17:3'): ZhenM_parse_data_format parses positions and labels ──
+parsed$date_col_labels (`actual`) not equal to c("record_date", "start_time") (`expected`).
+
+`actual` is NULL
+`expected` is a character vector ('record_date', 'start_time')
+── Failure ('test-data-format.R:31:3'): ZhenM_parse_data_format rejects duplicated positions ──
+`ZhenM_parse_data_format(format_file)` did not throw the expected error.
+── Failure ('test-impute.R:16:3'): ZhenM_impute_weight fills missing values ────
+sum(is.na(result$median_weight_g)) < sum(is.na(dt$median_weight_g)) is not TRUE
+
+`actual`:   FALSE
+`expected`: TRUE 
+── Error ('test-phenotype.R:11:3'): standard_fcr calculates correctly ──────────
+Error in `as.IDate(character())`: could not find function "as.IDate"
+Backtrace:
+    ▆
+ 1. └─ZhenMeasure::ZhenM_calc_phenotypes(dt, "standard_fcr") at test-phenotype.R:11:3
+ 2.   └─ZhenMeasure:::.dispatch_phenotype_calc(...)
+ 3.     └─ZhenMeasure:::.calc_phenotypes_standard_fcr(daily_records, cfg)
+ 4.       └─ZhenMeasure:::.calc_base_phenotypes(dt_test)
+ 5.         └─data.table::data.table(...)
+── Error ('test-phenotype.R:29:3'): report mode calculates stage average ───────
+Error in `as.IDate(character())`: could not find function "as.IDate"
+Backtrace:
+    ▆
+ 1. └─ZhenMeasure::ZhenM_calc_phenotypes(dt, "report") at test-phenotype.R:29:3
+ 2.   └─ZhenMeasure:::.dispatch_phenotype_calc(...)
+ 3.     └─ZhenMeasure:::.calc_phenotypes_report(daily_records, cfg)
+ 4.       └─ZhenMeasure:::.calc_base_phenotypes(daily_records)
+ 5.         └─data.table::data.table(...)
+── Error ('test-phenotype.R:46:3'): monitor mode produces daily output ─────────
+Error in `as.IDate(character())`: could not find function "as.IDate"
+Backtrace:
+    ▆
+ 1. └─ZhenMeasure::ZhenM_calc_phenotypes(dt, "monitor") at test-phenotype.R:46:3
+ 2.   └─ZhenMeasure:::.dispatch_phenotype_calc(...)
+ 3.     └─ZhenMeasure:::.calc_phenotypes_monitor(daily_records, cfg)
+ 4.       └─ZhenMeasure:::.calc_base_phenotypes(dt)
+ 5.         └─data.table::data.table(...)
+── Error ('test-phenotype.R:63:3'): research mode includes statistics ──────────
+Error in `as.IDate(character())`: could not find function "as.IDate"
+Backtrace:
+    ▆
+ 1. └─ZhenMeasure::ZhenM_calc_phenotypes(dt, "research") at test-phenotype.R:63:3
+ 2.   └─ZhenMeasure:::.dispatch_phenotype_calc(...)
+ 3.     └─ZhenMeasure:::.calc_phenotypes_research(daily_records, cfg)
+ 4.       └─ZhenMeasure:::.calc_base_phenotypes(dt)
+ 5.         └─data.table::data.table(...)
+── Error ('test-phenotype.R:80:3'): weight stage mode partitions data correctly ──
+Error in `as.IDate(character())`: could not find function "as.IDate"
+Backtrace:
+    ▆
+ 1. └─ZhenMeasure::ZhenM_calc_phenotypes(...) at test-phenotype.R:80:3
+ 2.   └─ZhenMeasure:::.calc_phenotypes_by_weight_stages(...)
+ 3.     └─base::lapply(...)
+ 4.       └─ZhenMeasure (local) FUN(X[[i]], ...)
+ 5.         └─ZhenMeasure:::.dispatch_phenotype_calc(...)
+ 6.           └─ZhenMeasure:::.calc_phenotypes_standard_fcr(daily_records, cfg)
+ 7.             └─ZhenMeasure:::.calc_base_phenotypes(dt_test)
+ 8.               └─data.table::data.table(...)
+── Error ('test-phenotype.R:102:3'): age stage mode requires age_days column ───
+Error in `as.IDate(character())`: could not find function "as.IDate"
+Backtrace:
+    ▆
+ 1. └─ZhenMeasure::ZhenM_calc_phenotypes(...) at test-phenotype.R:102:3
+ 2.   └─ZhenMeasure:::.calc_phenotypes_by_age_stages(...)
+ 3.     └─base::lapply(...)
+ 4.       └─ZhenMeasure (local) FUN(X[[i]], ...)
+ 5.         └─ZhenMeasure:::.dispatch_phenotype_calc(...)
+ 6.           └─ZhenMeasure:::.calc_phenotypes_report(daily_records, cfg)
+ 7.             └─ZhenMeasure:::.calc_base_phenotypes(daily_records)
+ 8.               └─data.table::data.table(...)
+── Error ('test-phenotype.R:123:3'): date stage mode partitions by dates ───────
+Error in `as.IDate(character())`: could not find function "as.IDate"
+Backtrace:
+    ▆
+ 1. └─ZhenMeasure::ZhenM_calc_phenotypes(...) at test-phenotype.R:123:3
+ 2.   └─ZhenMeasure:::.calc_phenotypes_by_date_stages(...)
+ 3.     └─base::lapply(...)
+ 4.       └─ZhenMeasure (local) FUN(X[[i]], ...)
+ 5.         └─ZhenMeasure:::.dispatch_phenotype_calc(...)
+ 6.           └─ZhenMeasure:::.calc_phenotypes_report(daily_records, cfg)
+ 7.             └─ZhenMeasure:::.calc_base_phenotypes(daily_records)
+ 8.               └─data.table::data.table(...)
+── Error ('test-qc-and-phenotype-age.R:22:3'): qc_only returns split QC outputs ──
+Error in `ZhenM_run(data_type = "NEDAP", data_path = data_dir, data_format = format_file, 
+    run_mode = "qc_only", min_data_count = 20)`: could not find function "ZhenM_run"
+── Error ('test-qc-and-phenotype-age.R:54:3'): qc_only writes structured qc output files ──
+Error in `ZhenM_run(data_type = "NEDAP", data_path = data_dir, data_format = format_file, 
+    run_mode = "qc_only", min_data_count = 20, output_dir = out_dir)`: could not find function "ZhenM_run"
+── Error ('test-qc-and-phenotype-age.R:114:3'): new phenotype calculation interface works with age stages ──
+Error in `as.IDate(character())`: could not find function "as.IDate"
+Backtrace:
+    ▆
+ 1. └─ZhenMeasure::ZhenM_calc_phenotypes(...) at test-qc-and-phenotype-age.R:114:3
+ 2.   └─ZhenMeasure:::.calc_phenotypes_by_age_stages(...)
+ 3.     └─base::lapply(...)
+ 4.       └─ZhenMeasure (local) FUN(X[[i]], ...)
+ 5.         └─ZhenMeasure:::.dispatch_phenotype_calc(...)
+ 6.           └─ZhenMeasure:::.calc_phenotypes_report(daily_records, cfg)
+ 7.             └─ZhenMeasure:::.calc_base_phenotypes(daily_records)
+ 8.               └─data.table::data.table(...)
+── Error ('test-qc.R:61:3'): ZhenM_standard_to_daily_filtered excludes outliers ──
+Error in ``[.data.table`(dt, , .(daily_feed_g = if (any(flag_feed_out_of_range == 
+    TRUE, na.rm = TRUE)) {
+    NA_real_
+} else {
+    valid_feed <- feed_filtered[feed_filtered > 0 & !is.na(feed_filtered)]
+    if (length(valid_feed) == 0) {
+        NA_real_
+    }
+    else {
+        sum(valid_feed, na.rm = TRUE)
+    }
+}, daily_weight_g = if (has_national_weight) {
+    valid_ww <- weighted_avg_weight_per_day[is_outlier_wt == 
+        FALSE]
+    if (length(valid_ww) > 0 && any(!is.na(valid_ww))) {
+        data.table::first(stats::na.omit(valid_ww))
+    }
+    else {
+        NA_real_
+    }
+} else if (has_legacy_weight) {
+    if (all(is.na(weight_filtered))) {
+        NA_real_
+    }
+    else {
+        stats::median(weight_filtered, na.rm = TRUE)
+    }
+}, age_day = if (all(is.na(.age_val))) NA_real_ else data.table::first(stats::na.omit(.age_val)), 
+    visits_n = .N, visits_n_valid = sum(is_outlier_feed == FALSE, 
+        na.rm = TRUE), total_duration_sec = sum(ifelse(is_outlier_feed == 
+        FALSE, .dur_val, 0), na.rm = TRUE), location = paste(unique(stats::na.omit(.loc_val)), 
+        collapse = ";"), n_outlier_wt = sum(is_outlier_wt == 
+        TRUE, na.rm = TRUE), n_outlier_feed = sum(is_outlier_feed == 
+        TRUE, na.rm = TRUE), has_feed_out_of_range_today = any(flag_feed_out_of_range == 
+        TRUE, na.rm = TRUE)), by = c(id_col, "record_date"))`: Column 2 of j's result for the first group is NULL. We rely on the column types of the first result to decide the type expected for the remaining groups (and require consistency). NULL columns are acceptable for later groups (and those are replaced with NA of appropriate type and recycled) but not for the first. Please use a typed empty vector instead, such as integer() or numeric().
+Backtrace:
+    ▆
+ 1. └─ZhenMeasure::ZhenM_standard_to_daily_filtered(dt) at test-qc.R:61:3
+ 2.   ├─...[]
+ 3.   └─data.table:::`[.data.table`(...)
+── Error ('test-standard-schema.R:36:3'): ZhenM_daily_aggregate aggregates daily metrics ──
+Error in `ZhenM_daily_aggregate(dt)`: could not find function "ZhenM_daily_aggregate"
+
+[ FAIL 20 | WARN 0 | SKIP 2 | PASS 37 ]
+Error: Test failures
+Execution halted
+
+1 error ✖ | 3 warnings ✖ | 5 notes ✖
+错误: R CMD check found ERRORs
+错误: R CMD check found ERRORs

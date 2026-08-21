@@ -1,0 +1,37 @@
+{
+  "source": "Nedap",
+  "errors": {
+    "national": "OK",
+    "legacy": "OK"
+  },
+  "step2_overall": {
+    "nat_records": 1598,
+    "leg_records": 1607
+  },
+  "step3_weight": {
+    "nat_outlier_wt": 0,
+    "leg_outlier_wt": 0
+  },
+  "step4_feed": {
+    "nat_outlier_feed": 0,
+    "leg_outlier_feed": 0
+  },
+  "step5_daily": {
+    "nat_daily_rows": 201,
+    "leg_daily_rows": 201
+  },
+  "step7_phenotype": {
+    "nat_animals": 3,
+    "leg_animals": 3,
+    "nat_mean_FCR": 3.0624,
+    "leg_mean_FCR": 3.0573,
+    "nat_sd_FCR": 0.1965,
+    "leg_sd_FCR": 0.1789,
+    "nat_mean_ADFI": 2806.62,
+    "leg_mean_ADFI": 2785.59,
+    "nat_mean_ADG": 1024.03,
+    "leg_mean_ADG": 1018.06,
+    "nat_FCR_NA": 0,
+    "leg_FCR_NA": 0
+  }
+}

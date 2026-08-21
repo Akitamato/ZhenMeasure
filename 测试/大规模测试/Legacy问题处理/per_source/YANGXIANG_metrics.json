@@ -1,0 +1,40 @@
+{
+  "source": "YANGXIANG",
+  "timestamp": "2026-06-22 18:53:16",
+  "errors": {
+    "national_standard": "none",
+    "legacy": "none"
+  },
+  "step2_overall": {
+    "nat_records": 223983,
+    "leg_records": 191404
+  },
+  "step3_weight": {
+    "nat_outlier_wt": 9596,
+    "leg_outlier_wt": 8759
+  },
+  "step4_feed": {
+    "nat_outlier_feed": 10446,
+    "leg_outlier_feed": 13782
+  },
+  "step5_daily": {
+    "nat_daily_rows": 13087,
+    "leg_daily_rows": 10915,
+    "nat_animals": 118,
+    "leg_animals": 99
+  },
+  "step7_phenotype": {
+    "nat_animals": 354,
+    "nat_mean_FCR": 2.831,
+    "nat_sd_FCR": 0.327,
+    "nat_mean_ADFI": 2405.2,
+    "nat_mean_ADG": 926.8,
+    "nat_FCR_NA": 0,
+    "leg_animals": 297,
+    "leg_mean_FCR": 3.118,
+    "leg_sd_FCR": 0.577,
+    "leg_mean_ADFI": 2561.2,
+    "leg_mean_ADG": 910.9,
+    "leg_FCR_NA": 1
+  }
+}

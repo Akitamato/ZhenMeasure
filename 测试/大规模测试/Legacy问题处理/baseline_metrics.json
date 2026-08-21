@@ -1,0 +1,32 @@
+{
+  "YANGXIANG": {
+    "source": "YANGXIANG",
+    "n_animals": 118,
+    "n_daily_records": 13087,
+    "ADFI_g": 2604.83,
+    "ADG_g": 947.24,
+    "FCR": 3.0768,
+    "FCR_sd": 0.3864,
+    "FCR_NA": 0
+  },
+  "FIRE": {
+    "source": "FIRE",
+    "n_animals": 134,
+    "n_daily_records": 13340,
+    "ADFI_g": 2721.25,
+    "ADG_g": 1007.91,
+    "FCR": 3.0358,
+    "FCR_sd": 0.4868,
+    "FCR_NA": 0
+  },
+  "Nedap": {
+    "source": "Nedap",
+    "n_animals": 3,
+    "n_daily_records": 201,
+    "ADFI_g": 2812.56,
+    "ADG_g": 1034.51,
+    "FCR": 3.0613,
+    "FCR_sd": 0.2009,
+    "FCR_NA": 0
+  }
+}
