@@ -37,7 +37,7 @@ test_that("ZhenM_qc_feed_standard identifies anomalies", {
   expect_true(any(result$flag_feed_negative))
 })
 
-test_that("ZhenM_standard_to_daily_filtered excludes outliers", {
+test_that("ZhenM_standard_to_daily_filtered corrects outliers", {
   skip_if_not_installed("data.table")
 
   # Create standard_data with QC flags
@@ -48,6 +48,7 @@ test_that("ZhenM_standard_to_daily_filtered excludes outliers", {
     weight_g = c(30000, 30100, 32000, 32100, 34000, 34100, 36000, 36100, 38000, 38100),
     duration_sec = rep(300, 10),
     is_outlier_feed = c(rep(FALSE, 3), TRUE, rep(FALSE, 6)),
+    flag_feed_too_high = c(rep(FALSE, 3), TRUE, rep(FALSE, 6)),
     is_outlier_wt = rep(FALSE, 10),
     device_type = "YANGXIANG",
     age_day = rep(100:104, each = 2),
@@ -62,9 +63,10 @@ test_that("ZhenM_standard_to_daily_filtered excludes outliers", {
   expect_equal(nrow(result), 5)  # 5 days of data
   expect_true("n_outlier_feed" %in% names(result))
 
-  # Check day 2 feed (should exclude outlier, only 350 remains)
+  # 被 flag 的 9000g 记录应被「纠正」（封顶到个体 P99），而非整体排除(=350)或原样保留(=9350)
   day2_feed <- result[record_date == as.Date("2024-01-02"), daily_feed_g]
-  expect_equal(day2_feed, 350)
+  expect_gt(day2_feed, 350)
+  expect_lt(day2_feed, 350 + 9000)
 })
 
 test_that("ZhenM_generate_qc_summary produces summary", {

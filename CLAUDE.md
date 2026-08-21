@@ -114,6 +114,14 @@ Comparison test scripts are in `V项目测试与开发/测试/与中农程序对
 
 ## Bug Fix Log
 
+### V1.1.1
+
+采食量校正模型重构 + 个体日增重口径修复：
+- **记录级物理纠正**（`zhenm_daily_aggregate_filtered.R` 新增 `.correct_feed_records()`）：被 flag 的采食记录不再「置零排除」，改为按 flag 类型物理封顶——噪声类（负值/极端速度小采食/长时间零速）置 0，`speed_too_fast` 封顶到 `170×时长/60`，`feed_too_high` 封顶到个体 P99（用干净记录计算），时长类异常/速度过慢保留原值。南沙数据 `ADFI_g` 1745→1995.5，校正量 -442→-139.5 g/天。
+- **日级 LMM 校正改为兜底**：记录级纠正成功时跳过 `normal_feed_sum + β×flag` 校正（避免二次校正），仅保留 6kg 日上限校验 `flag_daily_feed_over_limit`；记录级纠正失败时才走原日级 LMM。
+- **个体日增重口径修复**：`adg_g` 从 `diff(daily_weight_g)`（未除以天数）改为 `diff(daily_weight_g)/as.numeric(diff(record_date))`，单位 g/天。
+- **单测更新**：`test-qc.R` 从「排除异常值」契约改为「纠正异常值」，补 `flag_feed_too_high` 并改属性断言。
+
 ### V1.1.0
 
 修复 4 个采食量相关 bug + 1 个可追溯增强：

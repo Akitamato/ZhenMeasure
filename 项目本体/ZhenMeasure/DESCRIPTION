@@ -1,7 +1,7 @@
 Package: ZhenMeasure
 Type: Package
 Title: ZhenMeasure: Pig Feeding Station Data Standardization, Quality Control and Phenotype Toolkit
-Version: 1.1.0
+Version: 1.1.1
 Authors@R: c(
     person(given = "LiaoYiHui", family = "", role = c("aut", "cre"), email = "yhliao@webmail.hzau.edu.cn"),
     person(given = "WeiYi", family = "", role = "aut"),

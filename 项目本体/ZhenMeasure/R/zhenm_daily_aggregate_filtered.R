@@ -102,8 +102,17 @@ ZhenM_standard_to_daily_filtered <- function(standard_records) {
     dt[, weight_filtered := NA_real_]
   }
   
+  # 被 flag 记录 = 事件真实发生但采食量错误，按 flag 类型用物理规则纠正（而非置零）。
+  # 纠正失败时回退为现有「置零 + 日级 LMM 校正」路径。
+  feed_correction_success <- FALSE
   if (!is.null(feed_col)) {
-    dt[, feed_filtered := ifelse(is_outlier_feed == TRUE, 0, get(feed_col))]
+    corrected <- .correct_feed_records(dt)
+    feed_correction_success <- corrected$success
+    if (feed_correction_success) {
+      dt[, feed_filtered := corrected$feed_corrected]
+    } else {
+      dt[, feed_filtered := ifelse(is_outlier_feed == TRUE, 0, get(feed_col))]
+    }
   } else {
     dt[, feed_filtered := 0]
   }
@@ -199,7 +208,14 @@ ZhenM_standard_to_daily_filtered <- function(standard_records) {
     }
   }
 
-  result <- .apply_feed_lmm_correction(result, dt)
+  if (feed_correction_success) {
+    # 记录级物理纠正已成功：跳过日级 LMM 校正（避免二次校正），仅保留 6kg 日上限校验
+    result[, flag_daily_feed_over_limit := !is.na(daily_feed_g) & daily_feed_g > 6000]
+    result[!is.na(daily_feed_g) & (daily_feed_g <= 0 | daily_feed_g > 6000), daily_feed_g := NA_real_]
+  } else {
+    # 记录级纠正失败：按现有日级 LMM 校正兜底
+    result <- .apply_feed_lmm_correction(result, dt)
+  }
   # =================================================
 
   
@@ -208,6 +224,72 @@ ZhenM_standard_to_daily_filtered <- function(standard_records) {
   attr(result, "source_format") <- if (id_col == "ID") "original" else "new"
   
   result
+}
+
+#' Record-level feed intake correction by flag type (physics caps)
+#'
+#' Corrects the feed intake of flagged records using flag-specific physical
+#' rules instead of zeroing them out or predicting from a regression. A flagged
+#' record still represents a real feeding event whose recorded amount is at
+#' most some physiological upper bound.
+#'
+#' @param dt Standard-record-level data.table with feed QC flags
+#' @return list(success, feed_corrected). feed_corrected is a numeric vector
+#'   aligned with dt rows.
+#' @keywords internal
+.correct_feed_records <- function(dt) {
+  dt <- data.table::copy(dt)
+
+  feed_col <- if ("feed_g" %in% names(dt)) "feed_g"
+              else if ("Feed_intake" %in% names(dt)) "Feed_intake" else NULL
+  if (is.null(feed_col) || !"is_outlier_feed" %in% names(dt)) {
+    return(list(success = FALSE, feed_corrected = NULL))
+  }
+
+  dur_col <- if ("duration_sec" %in% names(dt)) "duration_sec"
+             else if ("Duration" %in% names(dt)) "Duration" else NULL
+
+  # 初始保留原采食量（被 flag 记录不置零，只对「明显离谱」的封顶/归零）
+  dt[, feed_corrected := as.numeric(get(feed_col))]
+
+  # speed_max 与 zhenm_config_defaults.R:41 保持一致（170 g/min）
+  speed_max <- 170
+
+  # 1) 纯噪声 → 0
+  if ("flag_feed_negative" %in% names(dt)) {
+    dt[flag_feed_negative == TRUE, feed_corrected := 0]
+  }
+  if ("flag_speed_extreme_low_feed" %in% names(dt)) {
+    dt[flag_speed_extreme_low_feed == TRUE, feed_corrected := 0]
+  }
+  if ("flag_speed_zero_long_duration" %in% names(dt)) {
+    dt[flag_speed_zero_long_duration == TRUE, feed_corrected := 0]
+  }
+
+  # 2) 速度过快 → 按生理上限封顶：feed ≤ speed_max × duration/60
+  if ("flag_speed_too_fast" %in% names(dt) && !is.null(dur_col)) {
+    dt[, .cap := speed_max * as.numeric(get(dur_col)) / 60]
+    dt[flag_speed_too_fast == TRUE & !is.na(.cap) & .cap > 0,
+       feed_corrected := pmin(feed_corrected, .cap)]
+    dt[, .cap := NULL]
+  }
+
+  # 3) 单次采食过高 → 封顶到个体 P99（用干净记录计算，避免被异常值抬高）
+  if ("flag_feed_too_high" %in% names(dt)) {
+    dt[, feed_p99 := stats::quantile(
+          feed_corrected[is_outlier_feed == FALSE & feed_corrected > 0],
+          0.99, na.rm = TRUE), by = animal_id]
+    dt[flag_feed_too_high == TRUE & !is.na(feed_p99),
+       feed_corrected := pmin(feed_corrected, feed_p99)]
+    dt[, feed_p99 := NULL]
+  }
+
+  # 4) 时长类异常 / speed_too_slow / STL → 保留原值（时长错但采食量可能对），无需处理
+
+  n_corrected <- sum(dt$is_outlier_feed == TRUE, na.rm = TRUE)
+  message(sprintf("Record-level feed correction: corrected %d flagged records via physics rules.", n_corrected))
+
+  list(success = TRUE, feed_corrected = dt$feed_corrected)
 }
 
 #' LMM Feed Intake Correction Engine
@@ -272,9 +354,9 @@ ZhenM_standard_to_daily_filtered <- function(standard_records) {
   
   # ==== 3. Construct individual daily weight gain (Covariate) ====
   data.table::setorder(dt, animal_id, record_date)
-  # Roughly estimate ADG using diff (lag 1 day difference)
-  dt[, adg_g := c(NA, diff(daily_weight_g)), by = animal_id]
-  # Cannot diff on the first day, pad with 0 to prevent training interference
+  # 个体日增重 = 相邻两天体重差 / 相邻两天天数差（g/天）
+  dt[, adg_g := c(NA, diff(daily_weight_g) / as.numeric(diff(record_date))), by = animal_id]
+  # 首日无前值，补 0 避免干扰训练
   dt[is.na(adg_g), adg_g := 0]
   
   # ==== 4. LMM Preparation and Modeling ====
