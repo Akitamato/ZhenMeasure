@@ -132,3 +132,41 @@ test_that("date stage mode partitions by dates", {
   expect_true("stage_end_date" %in% names(result))
   expect_true(nrow(result) >= 3)  # Should have at least 3 stages
 })
+
+test_that("report mode adds FCR stage QC columns", {
+  skip_if_not_installed("data.table")
+
+  dt <- data.table::data.table(
+    animal_id = rep("A001", 50),
+    record_date = seq.Date(as.Date("2024-01-01"), by = "day", length.out = 50),
+    daily_weight_g = seq(30000, 80000, length.out = 50),
+    daily_feed_g = rep(2000, 50)
+  )
+
+  result <- ZhenM_calc_phenotypes(dt, "report")
+
+  expect_true("flag_fcr_stage_invalid" %in% names(result))
+  expect_true("n_stages" %in% names(result))
+  expect_true("n_valid_stages" %in% names(result))
+})
+
+test_that("stage test_days filtering drops short stages", {
+  skip_if_not_installed("data.table")
+
+  # 体重在 10 天内从 30kg 涨到 100kg，30-100/115/120 阶段 test_days=10 < 20，应全部被过滤
+  dt <- data.table::data.table(
+    animal_id = rep("A001", 10),
+    record_date = seq.Date(as.Date("2024-01-01"), by = "day", length.out = 10),
+    daily_weight_g = seq(30000, 100000, length.out = 10),
+    daily_feed_g = rep(2000, 10)
+  )
+
+  result <- ZhenM_calc_phenotypes(
+    dt,
+    phenotype_method = "report",
+    stage_mode = "weight",
+    target_weight_stages = "YANGXIANG"
+  )
+
+  expect_true(nrow(result) == 0)
+})

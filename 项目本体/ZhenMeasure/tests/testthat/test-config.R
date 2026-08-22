@@ -16,9 +16,11 @@ test_that("national_standard config has required parameters", {
   cfg <- ZhenM_default_config("national_standard")$national_standard
 
   expect_equal(cfg$weight_range, c(25, 140))
+  expect_equal(cfg$growth_curve_r2_min, 0.95)
   expect_equal(cfg$feed_intake_range, c(0, 6))
   expect_equal(cfg$impute_r2_min, 0.95)
   expect_equal(cfg$min_test_days, 60)
+  expect_equal(cfg$min_stage_days, 20)
   expect_equal(cfg$max_missing_rate, 0.15)
 
   expect_true(is.data.frame(cfg$fcr_ranges))

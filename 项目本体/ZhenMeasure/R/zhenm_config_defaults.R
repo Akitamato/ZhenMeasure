@@ -25,7 +25,7 @@ ZhenM_default_config <- function(qc_method = "national_standard") {
     weight_range = c(25, 140),
     weight_threshold = 0.25,
     daily_weight_threshold = 0.90,
-    growth_curve_r2_min = 0.99,
+    growth_curve_r2_min = 0.95,
     test_weight_range = c(45, 110),
 
     # Feed QC
@@ -50,6 +50,7 @@ ZhenM_default_config <- function(qc_method = "national_standard") {
 
     # Data completeness
     min_test_days = 60,
+    min_stage_days = 20,
     max_missing_rate = 0.15,
 
     # FCR ranges (Table 2)

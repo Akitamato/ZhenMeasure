@@ -142,27 +142,32 @@ run_zhen_measure <- function(data_path, data_type, format_path,
     animals_to_delete <- character()
     min_r2 <- cfg$national_standard$growth_curve_r2_min
     
+    n_insufficient <- 0L
+    n_low_r2 <- 0L
     for (id in ids_to_check) {
       sub_daily <- daily_data[animal_id == id]
       valid_pts <- sub_daily[!is.na(daily_weight_g)]
-      
+
       if (nrow(valid_pts) < 10) {
         animals_to_delete <- c(animals_to_delete, id)
+        n_insufficient <- n_insufficient + 1L
         next
       }
-      
+
       x <- as.numeric(valid_pts$record_date - min(valid_pts$record_date))
       y <- valid_pts$daily_weight_g
-      
+
       fit_res <- .check_growth_fit(y, x, min_r2 = min_r2)
       if (!fit_res$pass) {
         animals_to_delete <- c(animals_to_delete, id)
+        n_low_r2 <- n_low_r2 + 1L
       }
     }
     
     if (length(animals_to_delete) > 0) {
       if (!is.null(logger)) {
-        logger$info(sprintf("由于生长曲线拟合质量差直接删除个体数: %d", length(animals_to_delete)))
+        logger$info(sprintf("生长曲线质控删除个体数: %d（点数不足 %d 头, R²低于阈值 %d 头）",
+                            length(animals_to_delete), n_insufficient, n_low_r2))
         if (length(animals_to_delete) <= 20) {
           logger$detail(sprintf("被删除的异常个体 ID: %s", paste(animals_to_delete, collapse = ", ")))
         } else {

@@ -86,7 +86,7 @@ ZhenM_calc_phenotypes <- function(daily_records,
   } else if (stage_mode == "date") {
     stage_results <- .calc_phenotypes_by_date_stages(dt, phenotype_method, cfg, target_date_stages)
   }
-  
+
   return(stage_results)
 }
 
@@ -135,6 +135,14 @@ ZhenM_calc_phenotypes <- function(daily_records,
     if (nrow(dt_stage) == 0) return(NULL)
     
     result <- .dispatch_phenotype_calc(dt_stage, phenotype_method, cfg)
+    # report 模式的体重阶段：过滤 test_days 过短的病猪（阶段数据不足）
+    if (nrow(result) > 0 && identical(phenotype_method, "report") &&
+        "test_days" %in% names(result)) {
+      min_stage_days <- cfg$national_standard$min_stage_days
+      if (!is.null(min_stage_days)) {
+        result <- result[test_days >= min_stage_days]
+      }
+    }
     if (nrow(result) > 0) {
       result[, stage_label := stage_name]
       result[, stage_min := range_kg[1]]
@@ -339,6 +347,10 @@ ZhenM_calc_phenotypes <- function(daily_records,
     data.table::copy(cfg$national_standard$fcr_ranges)
   )
 
+  # 自建 kg 列（standard_fcr 调用方已建，report 等模式未建）
+  if (!"weight_kg" %in% names(dt)) dt[, weight_kg := daily_weight_g / 1000]
+  if (!"feed_kg" %in% names(dt)) dt[, feed_kg := daily_feed_g / 1000]
+
   # Calculate FCR for each 10kg stage
   dt[, weight_stage := cut(
     weight_kg,
@@ -384,7 +396,9 @@ ZhenM_calc_phenotypes <- function(daily_records,
 #' Report mode: stage average method
 #' @keywords internal
 .calc_phenotypes_report <- function(daily_records, cfg) {
-  .calc_base_phenotypes(daily_records)
+  phenotypes <- .calc_base_phenotypes(daily_records)
+  if (nrow(phenotypes) == 0) return(phenotypes)
+  .add_stage_fcr_qc(daily_records, phenotypes, cfg)
 }
 
 #' Monitor mode: rolling window method

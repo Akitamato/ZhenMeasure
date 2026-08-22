@@ -151,8 +151,11 @@
   }
   
   r2 <- summary(fit)$r.squared
+  if (is.na(r2) || is.nan(r2)) {
+    return(list(r2 = NA_real_, pass = FALSE, error = "R² 不可用"))
+  }
   pass <- r2 >= min_r2
-  
+
   list(r2 = r2, pass = pass, error = NULL)
 }
 
