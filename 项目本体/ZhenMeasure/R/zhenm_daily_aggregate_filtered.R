@@ -15,7 +15,7 @@
 #' @param standard_records Standard-record-level data with QC flags
 #' @return A daily-level table aggregated by animal and date with daily_weight_g and enhanced feed QC
 #' @export
-ZhenM_standard_to_daily_filtered <- function(standard_records) {
+ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
   if (!data.table::is.data.table(standard_records)) {
     standard_records <- data.table::as.data.table(standard_records)
   }
@@ -218,7 +218,11 @@ ZhenM_standard_to_daily_filtered <- function(standard_records) {
   }
   # =================================================
 
-  
+  # FCR 锚定矫正（可选）：用国标 FCR 范围双向 cap 日采食量
+  if (!is.null(config) && isTRUE(config$national_standard$use_fcr_anchor)) {
+    result <- .correct_feed_with_fcr_anchor(result, config)
+  }
+
   # Add attributes
   attr(result, "qc_filtered") <- TRUE
   attr(result, "source_format") <- if (id_col == "ID") "original" else "new"
@@ -290,6 +294,59 @@ ZhenM_standard_to_daily_filtered <- function(standard_records) {
   message(sprintf("Record-level feed correction: corrected %d flagged records via physics rules.", n_corrected))
 
   list(success = TRUE, feed_corrected = dt$feed_corrected)
+}
+
+#' FCR anchor correction: cap daily feed intake by national FCR ranges
+#'
+#' 用国标 FCR 范围（Table 2）作为生物学锚点：每天预期采食 = ADG × FCR。
+#' 实际采食偏离 [ADG×fcr_min, ADG×fcr_max] 带超过阈值时，双向 cap 回带边界。
+#'
+#' @param daily_dt Daily-level data.table with daily_weight_g and daily_feed_g
+#' @param config Configuration list with national_standard$fcr_ranges
+#' @return daily_dt with corrected daily_feed_g and flag_feed_fcr_corrected
+#' @keywords internal
+.correct_feed_with_fcr_anchor <- function(daily_dt, config) {
+  dt <- data.table::copy(daily_dt)
+  fcr_ranges <- data.table::as.data.table(data.table::copy(
+    config$national_standard$fcr_ranges))
+  th <- config$national_standard$fcr_anchor_threshold
+  if (is.null(th)) th <- 0.5
+
+  dt[, flag_feed_fcr_corrected := FALSE]
+  data.table::setorder(dt, animal_id, record_date)
+
+  ids <- unique(dt$animal_id)
+  for (id in ids) {
+    idx <- which(dt$animal_id == id)
+    w <- dt$daily_weight_g[idx] / 1000            # kg
+    f <- dt$daily_feed_g[idx]
+    d <- as.numeric(dt$record_date[idx] - min(dt$record_date[idx]))
+
+    # 日增重（g/天），首日无前值为 NA
+    adg <- c(NA_real_, diff(dt$daily_weight_g[idx]) / as.numeric(diff(d)))
+
+    for (i in seq_along(idx)) {
+      if (i == 1 || is.na(adg[i]) || adg[i] <= 0) next
+      if (is.na(f[i]) || is.na(w[i]) || w[i] < 30 || w[i] > 120) next
+
+      stage <- fcr_ranges[w[i] >= weight_min & w[i] < weight_max]
+      if (nrow(stage) == 0) next
+      fcr_min <- stage$fcr_min[1]
+      fcr_max <- stage$fcr_max[1]
+
+      upper <- adg[i] * fcr_max
+      lower <- adg[i] * fcr_min
+
+      if (f[i] > upper * (1 + th)) {
+        data.table::set(dt, idx[i], "daily_feed_g", upper * (1 + th))
+        data.table::set(dt, idx[i], "flag_feed_fcr_corrected", TRUE)
+      } else if (f[i] < lower * (1 - th)) {
+        data.table::set(dt, idx[i], "daily_feed_g", lower * (1 - th))
+        data.table::set(dt, idx[i], "flag_feed_fcr_corrected", TRUE)
+      }
+    }
+  }
+  dt
 }
 
 #' LMM Feed Intake Correction Engine

@@ -62,6 +62,10 @@ ZhenM_default_config <- function(qc_method = "national_standard") {
       stringsAsFactors = FALSE
     ),
 
+    # FCR anchor correction (optional, disabled by default)
+    use_fcr_anchor = FALSE,
+    fcr_anchor_threshold = 0.5,
+
     # STL time-series feed QC (optional, disabled by default)
     use_stl_feed = FALSE,
     stl_period = 7,

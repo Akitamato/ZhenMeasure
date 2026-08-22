@@ -118,7 +118,7 @@ run_zhen_measure <- function(data_path, data_type, format_path,
     
     message("Step 5: Converting to daily format (filtered)...")
     if (!is.null(logger)) logger$section("Step 5: 转换为日汇总格式（排除异常记录）")
-    daily_data <- ZhenM_standard_to_daily_filtered(standard_data)
+    daily_data <- ZhenM_standard_to_daily_filtered(standard_data, cfg)
     
     if (!is.null(logger)) {
       logger$detail(paste0("日汇总记录数: ", nrow(daily_data)))
