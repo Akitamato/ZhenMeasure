@@ -1,5 +1,14 @@
 # ZhenMeasure news
 
+## 1.1.1
+
+### Changed
+- **采食量校正模型重构**：被 flag 的采食记录不再「置零排除」，改为按 flag 类型物理封顶/归零（新增 `.correct_feed_records()`）——噪声类（负值/极端速度小采食/长时间零速）置 0，`speed_too_fast` 封顶到 `170×时长/60`，`feed_too_high` 封顶到个体 P99（用干净记录计算）。南沙数据 `ADFI_g` 1745→1995.5，校正量 -442→-139.5 g/天。
+- **日级 LMM 校正改为兜底**：记录级纠正成功时跳过 `normal_feed_sum + β×flag` 校正（避免二次校正），仅保留 6kg 日上限校验 `flag_daily_feed_over_limit`；记录级纠正失败时才走原日级 LMM。
+
+### Fixed
+- **个体日增重口径修复**：`adg_g` 从 `diff(daily_weight_g)`（未除以天数）改为 `diff(daily_weight_g)/as.numeric(diff(record_date))`，单位 g/天。
+
 ## 1.1.0
 
 ### Fixed
