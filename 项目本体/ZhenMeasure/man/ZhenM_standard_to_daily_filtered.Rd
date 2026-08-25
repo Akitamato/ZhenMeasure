@@ -4,10 +4,15 @@
 \alias{ZhenM_standard_to_daily_filtered}
 \title{Aggregate standard records to daily records with QC filtering}
 \usage{
-ZhenM_standard_to_daily_filtered(standard_records)
+ZhenM_standard_to_daily_filtered(standard_records, config = NULL)
 }
 \arguments{
 \item{standard_records}{Standard-record-level data with QC flags}
+
+\item{config}{Optional configuration list (merged via ZhenM_merge_config). Controls the
+optional FCR anchor correction (`national_standard$use_fcr_anchor`) and the correction
+mechanism switches (`use_record_feed_correction`, `use_lmm_feed_correction`).
+NULL keeps default behaviour.}
 }
 \value{
 A daily-level table aggregated by animal and date with daily_weight_g and enhanced feed QC

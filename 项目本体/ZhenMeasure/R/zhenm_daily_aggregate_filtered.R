@@ -13,6 +13,10 @@
 #'   the daily_feed_g for that day is set to NA.
 #'
 #' @param standard_records Standard-record-level data with QC flags
+#' @param config Optional configuration list (merged via ZhenM_merge_config). Controls the
+#'   optional FCR anchor correction (`national_standard$use_fcr_anchor`) and the correction
+#'   mechanism switches (`use_record_feed_correction`, `use_lmm_feed_correction`).
+#'   NULL keeps default behaviour.
 #' @return A daily-level table aggregated by animal and date with daily_weight_g and enhanced feed QC
 #' @export
 ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
