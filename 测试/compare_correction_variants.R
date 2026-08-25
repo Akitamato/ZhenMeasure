@@ -180,7 +180,7 @@ for (v in variants) {
                                    stage_mode = "weight", target_weight_stages = "YANGXIANG")
 
   res_daily[[v$key]] <- data.table(
-    key = v$key, label = v$label,
+    variant = v$key, label = v$label,
     n_animals = uniqueN(daily_pre$animal_id), n_days = n_days,
     na_feed_days = n_na_feed, over_limit_days = n_over_limit,
     fcr_corrected_days = n_fcr_fixed,
@@ -189,8 +189,8 @@ for (v in variants) {
     adfi_flagged_pre = adfi_flag_pre,
     adfi_all_post = mean(daily_post$daily_feed_g, na.rm = TRUE),
     gate_record_msg = gate_rec, gate_lmm_msg = gate_lmm)
-  res_pheno_all[[v$key]]  <- data.table(key = v$key, p_all)
-  res_pheno_stage[[v$key]] <- data.table(key = v$key, p_stage)
+  res_pheno_all[[v$key]]  <- data.table(variant = v$key, p_all)
+  res_pheno_stage[[v$key]] <- data.table(variant = v$key, p_stage)
   rm(daily_pre, daily_post, p_all, p_stage, filt); invisible(gc(verbose = FALSE))
 }
 
@@ -207,7 +207,7 @@ fcr_delta <- rbindlist(lapply(names(twin_pairs), function(k) {
 # --- 汇总表 ---
 order_keys <- c("E", "C0", "B", "A", "C1", "C2", "D")
 e_row <- data.table(
-  key = "E", label = "E_纯原始参照",
+  variant = "E", label = "E_纯原始参照",
   n_animals = uniqueN(raw_daily_E$animal_id), n_days = nrow(raw_daily_E),
   na_feed_days = 0L, over_limit_days = NA_integer_, fcr_corrected_days = 0L,
   imputed_feed_days = 0L,
@@ -217,7 +217,7 @@ e_row <- data.table(
   adfi_all_post = NA_real_,
   gate_record_msg = FALSE, gate_lmm_msg = FALSE)
 
-summary <- rbind(e_row, rbindlist(res_daily, fill = TRUE), fill = TRUE)[match(order_keys, key)]
+summary <- rbind(e_row, rbindlist(res_daily, fill = TRUE), fill = TRUE)[match(order_keys, variant)]
 summary[, `:=`(
   delta_vs_baseline = adfi_clean_pre - baseline_clean,
   pct_vs_baseline = 100 * (adfi_clean_pre - baseline_clean) / baseline_clean)]
@@ -231,12 +231,12 @@ del_ok <- all(vapply(deleted_sets, function(x) identical(x, ref_del), logical(1)
 cat(sprintf("生长曲线 R² 剔除个体集各变体一致: %s（%d 头被剔除）\n", del_ok, length(ref_del)))
 if (!del_ok) stop("各变体的生长曲线剔除集合不一致——门控接线存在 bug，禁止继续解读！")
 
-gate_tab <- summary[key != "E", .(key, gate_record_msg, gate_lmm_msg)]
+gate_tab <- summary[variant != "E", .(variant, gate_record_msg, gate_lmm_msg)]
 cat("门控消息证据（Record-level 应仅 A/D 为 TRUE；LMM 应仅 B/C2 为 TRUE）:\n")
 print(gate_tab)
 
 cat("\n=== 校正机制消融对比矩阵（主表：插补前日级；adfi_clean 为干净天口径） ===\n")
-print(summary[, .(key, label, n_animals, na_feed_days, fcr_corrected_days, imputed_feed_days,
+print(summary[, .(variant, label, n_animals, na_feed_days, fcr_corrected_days, imputed_feed_days,
                   adfi_all_pre = round(adfi_all_pre, 1),
                   adfi_clean_pre = round(adfi_clean_pre, 1),
                   adfi_flagged_pre = round(adfi_flagged_pre, 1),
@@ -245,21 +245,19 @@ print(summary[, .(key, label, n_animals, na_feed_days, fcr_corrected_days, imput
 
 cat("\n=== 表型层（stage_mode=NULL 总体口径） ===\n")
 ph_all <- rbindlist(res_pheno_all, fill = TRUE)
-print(ph_all[, .(key,
-                 ADG = round(mean(ADG_g, na.rm = TRUE), 1),
+print(ph_all[, .(ADG = round(mean(ADG_g, na.rm = TRUE), 1),
                  ADFI = round(mean(ADFI_g, na.rm = TRUE), 1),
                  FCR_mean = round(mean(FCR, na.rm = TRUE), 3),
                  FCR_sd = round(sd(FCR, na.rm = TRUE), 3),
-                 n = uniqueN(animal_id))])
+                 n = uniqueN(animal_id)), by = variant])
 
 cat("\n=== 表型层（weight 阶段 YANGXIANG 口径） ===\n")
 ph_stage_sum <- rbindlist(res_pheno_stage, fill = TRUE)[, .(
-  key,
   ADG = round(mean(ADG_g, na.rm = TRUE), 1),
   ADFI = round(mean(ADFI_g, na.rm = TRUE), 1),
   FCR_mean = round(mean(FCR, na.rm = TRUE), 3),
   FCR_sd = round(sd(FCR, na.rm = TRUE), 3),
-  n_rows = .N), by = key]
+  n_rows = .N), by = variant]
 print(ph_stage_sum)
 
 cat("\n=== FCR 锚边际效应（孪生差分，g/天） ===\n")
