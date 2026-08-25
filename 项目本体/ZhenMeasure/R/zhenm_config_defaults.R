@@ -66,6 +66,12 @@ ZhenM_default_config <- function(qc_method = "national_standard") {
     use_fcr_anchor = FALSE,
     fcr_anchor_threshold = 0.5,
 
+    # 校正机制开关：默认均为 TRUE（= 现状行为）。关闭记录级物理纠正后回退
+    # 「置零」路径；关闭日级 LMM 兜底后仅保留 6kg 日上限校验。用于校正机制
+    # 消融实验（issue #5）与后续锚点修复的对照评测。
+    use_record_feed_correction = TRUE,
+    use_lmm_feed_correction = TRUE,
+
     # STL time-series feed QC (optional, disabled by default)
     use_stl_feed = FALSE,
     stl_period = 7,

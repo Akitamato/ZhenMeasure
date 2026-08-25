@@ -102,10 +102,19 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
     dt[, weight_filtered := NA_real_]
   }
   
+  # 解析校正机制开关：config=NULL 直调时保持现状行为（记录级纠正 + LMM 兜底均开启）
+  ns_cfg <- if (!is.null(config)) config$national_standard else NULL
+  use_record_fix <- if (!is.null(ns_cfg$use_record_feed_correction)) {
+    isTRUE(ns_cfg$use_record_feed_correction)
+  } else TRUE
+  use_lmm_fix <- if (!is.null(ns_cfg$use_lmm_feed_correction)) {
+    isTRUE(ns_cfg$use_lmm_feed_correction)
+  } else TRUE
+
   # 被 flag 记录 = 事件真实发生但采食量错误，按 flag 类型用物理规则纠正（而非置零）。
-  # 纠正失败时回退为现有「置零 + 日级 LMM 校正」路径。
+  # 纠正失败或被配置关闭时回退为现有「置零 + 日级 LMM 校正」路径。
   feed_correction_success <- FALSE
-  if (!is.null(feed_col)) {
+  if (!is.null(feed_col) && use_record_fix) {
     corrected <- .correct_feed_records(dt)
     feed_correction_success <- corrected$success
     if (feed_correction_success) {
@@ -113,6 +122,9 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
     } else {
       dt[, feed_filtered := ifelse(is_outlier_feed == TRUE, 0, get(feed_col))]
     }
+  } else if (!is.null(feed_col)) {
+    # 记录级物理纠正被配置关闭（消融实验对照用）：走 V1.1.0 置零路径
+    dt[, feed_filtered := ifelse(is_outlier_feed == TRUE, 0, get(feed_col))]
   } else {
     dt[, feed_filtered := 0]
   }
@@ -208,12 +220,13 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
     }
   }
 
-  if (feed_correction_success) {
-    # 记录级物理纠正已成功：跳过日级 LMM 校正（避免二次校正），仅保留 6kg 日上限校验
+  if (feed_correction_success || !use_lmm_fix) {
+    # 记录级物理纠正已成功、或日级 LMM 兜底被配置关闭：跳过日级 LMM 校正，
+    # 仅保留 6kg 日上限校验（与成功分支口径一致，保证各变体间可比）
     result[, flag_daily_feed_over_limit := !is.na(daily_feed_g) & daily_feed_g > 6000]
     result[!is.na(daily_feed_g) & (daily_feed_g <= 0 | daily_feed_g > 6000), daily_feed_g := NA_real_]
   } else {
-    # 记录级纠正失败：按现有日级 LMM 校正兜底
+    # 记录级纠正失败/关闭且 LMM 未被禁用：按现有日级 LMM 校正兜底
     result <- .apply_feed_lmm_correction(result, dt)
   }
   # =================================================

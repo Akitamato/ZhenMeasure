@@ -25,6 +25,10 @@ test_that("national_standard config has required parameters", {
 
   expect_true(is.data.frame(cfg$fcr_ranges))
   expect_equal(nrow(cfg$fcr_ranges), 9)
+
+  # 校正机制开关默认开启（= V1.1.1 现状行为）
+  expect_true(cfg$use_record_feed_correction)
+  expect_true(cfg$use_lmm_feed_correction)
 })
 
 test_that("ZhenM_merge_config merges user config", {

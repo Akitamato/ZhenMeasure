@@ -1,5 +1,11 @@
 # ZhenMeasure news
 
+## Unreleased
+
+### Added
+- 新增校正机制开关 `use_record_feed_correction` 与 `use_lmm_feed_correction`（默认 TRUE，行为与 V1.1.1 完全一致）。关闭记录级物理纠正后回退「置零」路径；关闭日级 LMM 兜底后仅保留 6kg 日上限校验。用于校正机制消融实验（issue #5）。
+- 新增消融实验脚本 `测试/compare_correction_variants.R`：以 6 行对照矩阵（纯原始 / V1.1.0 / V1.1.1 / 纯 FCR 锚定等）在南沙数据上量化各校正机制的净效果。
+
 ## 1.1.0
 
 ### Fixed
