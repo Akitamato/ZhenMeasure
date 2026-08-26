@@ -11,7 +11,8 @@ ZhenM_standard_to_daily_filtered(standard_records, config = NULL)
 
 \item{config}{Optional configuration list (merged via ZhenM_merge_config). Controls the
 optional FCR anchor correction (`national_standard$use_fcr_anchor`) and the correction
-mechanism switches (`use_record_feed_correction`, `use_lmm_feed_correction`).
+mechanism switches (`use_record_feed_correction`, `use_lmm_feed_correction`,
+experimental stacking switch `use_lmm_stacking`).
 NULL keeps default behaviour.}
 }
 \value{

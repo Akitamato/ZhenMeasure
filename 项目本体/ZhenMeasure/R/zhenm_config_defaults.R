@@ -72,6 +72,11 @@ ZhenM_default_config <- function(qc_method = "national_standard") {
     use_record_feed_correction = TRUE,
     use_lmm_feed_correction = TRUE,
 
+    # LMM 叠加模式（实验性）：记录级物理纠正成功后仍串联运行改良 LMM，
+    # 但只补偿物理规则无法恢复的「噪声置零类」损失（负值/极高速小采食/
+    # 长时间零速被置 0 的记录），避免对已被封顶纠正的记录二次补偿。
+    use_lmm_stacking = FALSE,
+
     # STL time-series feed QC (optional, disabled by default)
     use_stl_feed = FALSE,
     stl_period = 7,

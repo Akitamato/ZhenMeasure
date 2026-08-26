@@ -4,7 +4,7 @@
 \alias{.apply_feed_lmm_correction}
 \title{LMM Feed Intake Correction Engine}
 \usage{
-.apply_feed_lmm_correction(daily_dt, raw_dt, ns_cfg = NULL)
+.apply_feed_lmm_correction(daily_dt, raw_dt, ns_cfg = NULL, stack = FALSE)
 }
 \arguments{
 \item{daily_dt}{Daily-level data.table (aggregated output of Step 5)}
@@ -12,6 +12,8 @@
 \item{raw_dt}{Standard-record-level data.table with QC flags}
 
 \item{ns_cfg}{Optional national_standard config list (read for `speed_max`)}
+
+\item{stack}{Logical; TRUE = 互补叠加模式（见上），FALSE = 兜底模式}
 }
 \value{
 Daily-level data.table with corrected daily_feed_g and ledger column
@@ -30,5 +32,13 @@ Phase 1 重构（issue #5，V1.1.2）修复四个统计缺陷：
 4. 补偿加回量受物理速率约束：add-back ≤ speed_max × 被flag记录总时长 / 60
    （把记录级物理规则的先验吸收进 LMM）。
 另新增台账列 lmm_correction_g（每日净校正值），全程可追溯。
+}
+\details{
+stack 模式（`use_lmm_stacking=TRUE` 且记录级纠正成功时）：在物理纠正后的
+日值上做**互补式**校正——只建模「噪声置零类」flag（负值/极高速小采食/
+长时间零速被物理规则置 0 的记录）的时长特征；已被物理封顶恢复的
+speed_too_fast / feed_too_high 不再入模，避免二次补偿。响应为纠正后的
+日值本身，校正面为加法（daily_feed_g += correction）；NA 天不复活，
+留给插补。
 }
 \keyword{internal}

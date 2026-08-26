@@ -15,7 +15,8 @@
 #' @param standard_records Standard-record-level data with QC flags
 #' @param config Optional configuration list (merged via ZhenM_merge_config). Controls the
 #'   optional FCR anchor correction (`national_standard$use_fcr_anchor`) and the correction
-#'   mechanism switches (`use_record_feed_correction`, `use_lmm_feed_correction`).
+#'   mechanism switches (`use_record_feed_correction`, `use_lmm_feed_correction`,
+#'   experimental stacking switch `use_lmm_stacking`).
 #'   NULL keeps default behaviour.
 #' @return A daily-level table aggregated by animal and date with daily_weight_g and enhanced feed QC
 #' @export
@@ -114,6 +115,9 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
   use_lmm_fix <- if (!is.null(ns_cfg$use_lmm_feed_correction)) {
     isTRUE(ns_cfg$use_lmm_feed_correction)
   } else TRUE
+  use_lmm_stack <- if (!is.null(ns_cfg$use_lmm_stacking)) {
+    isTRUE(ns_cfg$use_lmm_stacking)
+  } else FALSE
 
   # 被 flag 记录 = 事件真实发生但采食量错误，按 flag 类型用物理规则纠正（而非置零）。
   # 纠正失败或被配置关闭时回退为现有「置零 + 日级 LMM 校正」路径。
@@ -224,14 +228,17 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
     }
   }
 
-  if (feed_correction_success || !use_lmm_fix) {
-    # 记录级物理纠正已成功、或日级 LMM 兜底被配置关闭：跳过日级 LMM 校正，
-    # 仅保留 6kg 日上限校验（与成功分支口径一致，保证各变体间可比）
+  run_lmm_fallback <- !feed_correction_success && use_lmm_fix
+  run_lmm_stack <- feed_correction_success && use_lmm_fix && use_lmm_stack
+  if (run_lmm_fallback || run_lmm_stack) {
+    # 记录级纠正失败/关闭 → 日级 LMM 兜底（fallback）；
+    # 纠正成功且开启叠加 → 在物理纠正结果上串联互补式 LMM（stack，
+    # 只补噪声置零类损失，不对已被物理封顶的记录二次补偿）
+    result <- .apply_feed_lmm_correction(result, dt, ns_cfg, stack = run_lmm_stack)
+  } else {
+    # 跳过日级 LMM 校正，仅保留 6kg 日上限校验（保证各路径口径一致）
     result[, flag_daily_feed_over_limit := !is.na(daily_feed_g) & daily_feed_g > 6000]
     result[!is.na(daily_feed_g) & (daily_feed_g <= 0 | daily_feed_g > 6000), daily_feed_g := NA_real_]
-  } else {
-    # 记录级纠正失败/关闭且 LMM 未被禁用：日级 LMM 校正兜底
-    result <- .apply_feed_lmm_correction(result, dt, ns_cfg)
   }
   # =================================================
 
@@ -381,13 +388,21 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
 #'    （把记录级物理规则的先验吸收进 LMM）。
 #' 另新增台账列 lmm_correction_g（每日净校正值），全程可追溯。
 #'
+#' stack 模式（`use_lmm_stacking=TRUE` 且记录级纠正成功时）：在物理纠正后的
+#' 日值上做**互补式**校正——只建模「噪声置零类」flag（负值/极高速小采食/
+#' 长时间零速被物理规则置 0 的记录）的时长特征；已被物理封顶恢复的
+#' speed_too_fast / feed_too_high 不再入模，避免二次补偿。响应为纠正后的
+#' 日值本身，校正面为加法（daily_feed_g += correction）；NA 天不复活，
+#' 留给插补。
+#'
 #' @param daily_dt Daily-level data.table (aggregated output of Step 5)
 #' @param raw_dt Standard-record-level data.table with QC flags
 #' @param ns_cfg Optional national_standard config list (read for `speed_max`)
+#' @param stack Logical; TRUE = 互补叠加模式（见上），FALSE = 兜底模式
 #' @return Daily-level data.table with corrected daily_feed_g and ledger column
 #'   lmm_correction_g
 #' @keywords internal
-.apply_feed_lmm_correction <- function(daily_dt, raw_dt, ns_cfg = NULL) {
+.apply_feed_lmm_correction <- function(daily_dt, raw_dt, ns_cfg = NULL, stack = FALSE) {
   dt <- data.table::copy(daily_dt)
   
   # 10 error flags for single record anomalies (including STL time series flag)
@@ -396,6 +411,11 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
                  "flag_speed_too_fast", "flag_speed_extreme_low_feed",
                  "flag_speed_zero_long_duration", "flag_feed_negative",
                  "flag_feed_too_high", "flag_STL_FI")
+
+  # 噪声置零类：物理规则会把这类记录置 0（真实克数完全丢失）——
+  # stack 模式下唯一允许 LMM 补偿的损失类别
+  noise_flags <- c("flag_feed_negative", "flag_speed_extreme_low_feed",
+                   "flag_speed_zero_long_duration")
   
   # ==== 1. Extract feed intake of normal records and anomaly occurrence flags ====
   # Mark "normal" records in raw_dt (i.e., all 9 error flags are FALSE AND not an outlier)
@@ -472,6 +492,25 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
     dt[, flagged_dur_total := 0]
   }
 
+  # stack 模式的速率封顶基数：仅噪声置零类的总时长（互补口径——只有这类
+  # 损失允许 LMM 补偿，封顶也只对这部分时长生效）
+  if (stack && !is.null(dur_col)) {
+    has_noise_any <- Reduce(`|`, lapply(noise_flags, function(f) {
+      if (f %in% names(raw_dt)) raw_dt[[f]] %in% TRUE else rep(FALSE, nrow(raw_dt))
+    }))
+    if (any(has_noise_any)) {
+      noise_tot <- raw_dt[has_noise_any, .(
+        noise_dur_total = sum(pmax(as.numeric(get(dur_col)), 0), na.rm = TRUE)
+      ), by = .(animal_id, record_date)]
+      dt <- merge(dt, noise_tot, by = c("animal_id", "record_date"), all.x = TRUE)
+      dt[is.na(noise_dur_total), noise_dur_total := 0]
+    } else {
+      dt[, noise_dur_total := 0]
+    }
+  } else {
+    dt[, noise_dur_total := 0]
+  }
+
   # ==== 2. Construct individual daily weight gain (Covariate) ====
   data.table::setorder(dt, animal_id, record_date)
   # 个体日增重 = 相邻两天体重差 / 相邻两天天数差（g/天）
@@ -480,11 +519,14 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
   dt[is.na(adg_g), adg_g := 0]
   
   # ==== 3. LMM Preparation and Modeling ====
+  # 响应变量：fallback = 干净记录和 normal_feed_sum（覆写口径）；
+  #          stack = 记录级物理纠正后的日值本身（加法口径）
+  response_col <- if (stack) "daily_feed_g" else "normal_feed_sum"
   if (requireNamespace("lme4", quietly = TRUE)) {
     # Only days with valid covariates are modeled as the dependent variable。
-    # 注意：训练集不再按 0 < normal_feed_sum ≤ 6000 截断（Phase 1 修复）——
-    # 截断会系统性丢弃大采食天、低估损失系数；生理上限只在出口校验（见第 4 步）
-    train_idx <- !is.na(dt$normal_feed_sum) & !is.na(dt$daily_weight_g) & !is.na(dt$adg_g)
+    # 注意：训练集不再按 0 < sum ≤ 6000 截断（Phase 1 修复）——截断会系统性
+    # 丢弃大采食天、低估损失系数；生理上限只在出口校验（见第 4 步）
+    train_idx <- !is.na(dt[[response_col]]) & !is.na(dt$daily_weight_g) & !is.na(dt$adg_g)
 
     # Include Location as a fixed effect only if it exists and has > 1 unique value
     has_loc <- "location" %in% names(dt) && length(unique(stats::na.omit(dt$location))) > 1
@@ -492,7 +534,7 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
 
     if (sum(train_idx) > 30) {
       # Rescale large covariates (grams to kg) to avoid lme4 optimizer warning: "Some predictor variables are on very different scales"
-      formula_str <- "normal_feed_sum ~ I(daily_weight_g / 1000) + I(adg_g / 1000)"
+      formula_str <- paste(response_col, "~ I(daily_weight_g / 1000) + I(adg_g / 1000)")
 
       # 解混杂关键项：异常条数与当日活动强度机械相关（访问越多的天越容易出现异常
       # 记录），不控制 visits_n 时 flag 系数会把「当天采食活动多」误吸收进补偿量
@@ -500,9 +542,11 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
       if (has_loc) formula_str <- paste(formula_str, "+ location")
       if (has_breed) formula_str <- paste(formula_str, "+ breed")
 
-      # 每个 flag 选一个入模特征：优先时长量纲；该特征在训练集中无变异时退回计数
+      # 每个 flag 选一个入模特征：优先时长量纲；该特征在训练集中无变异时退回计数。
+      # stack 模式只入模噪声置零类——其余类型已被物理规则恢复，二次补偿会重复计数
       active_feats <- character()
       for (flg in err_flags) {
+        if (stack && !flg %in% noise_flags) next
         picked <- NULL
         for (cand in c(paste0("dur_", flg), paste0("has_", flg))) {
           vals <- dt[[cand]][train_idx]
@@ -542,40 +586,45 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
           }
         }
 
-        # 物理速率封顶：补偿加回量 ≤ speed_max × 被flag记录总时长 / 60，
-        # 即加回部分隐含的采食速率不得超过生理上限（吸收记录级物理规则作先验）
+        # 物理速率封顶：补偿加回量 ≤ speed_max × 目标类别总时长 / 60，
+        # 即加回部分隐含的采食速率不得超过生理上限（吸收记录级物理规则作先验）；
+        # stack 模式只对噪声置零类的时长封顶（互补口径）
         speed_max <- if (!is.null(ns_cfg$speed_max)) as.numeric(ns_cfg$speed_max) else 170
-        cap_g <- speed_max * dt$flagged_dur_total / 60
+        cap_base <- if (stack) dt$noise_dur_total else dt$flagged_dur_total
+        cap_g <- speed_max * cap_base / 60
         dt[, lmm_correction_g := pmin(lmm_correction_g, cap_g)]
 
-        # Add correction to the normal daily feed intake
-        dt[!is.na(normal_feed_sum), daily_feed_g_corrected := normal_feed_sum + lmm_correction_g]
-
-        n_corrected <- sum(abs(dt$lmm_correction_g) > 0.001 & !is.na(dt$daily_feed_g_corrected), na.rm = TRUE)
-        n_capped <- sum(dt$flagged_dur_total > 0 &
+        n_corrected <- sum(abs(dt$lmm_correction_g) > 0.001, na.rm = TRUE)
+        n_capped <- sum(cap_base > 0 &
                           (cap_g - dt$lmm_correction_g) <= 0.001, na.rm = TRUE)
         mean_abs_corr <- if (n_corrected > 0) {
           mean(abs(dt$lmm_correction_g[abs(dt$lmm_correction_g) > 0.001]), na.rm = TRUE)
         } else 0
-        message(sprintf("LMM Feed Correction: corrected %d daily records (%d rate-capped), mean |correction| = %.1f g.",
-                        n_corrected, n_capped, mean_abs_corr))
+        mode_tag <- if (stack) "LMM Feed Correction (stack)" else "LMM Feed Correction"
+        message(sprintf("%s: corrected %d daily records (%d rate-capped), mean |correction| = %.1f g.",
+                        mode_tag, n_corrected, n_capped, mean_abs_corr))
 
-        # Overwrite the main daily feed_g variable（台账列 lmm_correction_g 保留在输出中）
-        dt[, daily_feed_g := daily_feed_g_corrected]
+        if (stack) {
+          # 加法应用：在物理纠正结果上追加补偿；NA 天不复活（留给插补）
+          dt[!is.na(daily_feed_g), daily_feed_g := daily_feed_g + lmm_correction_g]
+        } else {
+          # 覆写应用：干净记录和 + 统计补偿（台账列 lmm_correction_g 保留在输出中）
+          dt[!is.na(normal_feed_sum), daily_feed_g := normal_feed_sum + lmm_correction_g]
+        }
       } else {
         message("LMM Feed Correction: Model fitting failed or skipped, 0 records corrected.")
-        dt[, daily_feed_g := normal_feed_sum]
+        if (!stack) dt[, daily_feed_g := normal_feed_sum]
         dt[, lmm_correction_g := 0]
       }
     } else {
-      # If training samples are too few, use initial normal_feed_sum directly without LMM inference
+      # If training samples are too few, skip LMM inference entirely
       message(sprintf("LMM Feed Correction: Insufficient valid samples for training (%d <= 30), 0 records corrected.", sum(train_idx)))
-      dt[, daily_feed_g := normal_feed_sum]
+      if (!stack) dt[, daily_feed_g := normal_feed_sum]
       dt[, lmm_correction_g := 0]
     }
   } else {
-    warning("Package 'lme4' is not installed. Ignoring LMM feed correction. Proceeding with raw normal daily sum.")
-    dt[, daily_feed_g := normal_feed_sum]
+    warning("Package 'lme4' is not installed. Ignoring LMM feed correction.")
+    if (!stack) dt[, daily_feed_g := normal_feed_sum]
     dt[, lmm_correction_g := 0]
   }
 
@@ -589,7 +638,7 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
   # Clean temporary feature columns used in the process（台账列 lmm_correction_g 保留）
   cols_to_remove <- c("normal_feed_sum", "adg_g",
                       paste0("has_", err_flags), paste0("dur_", err_flags),
-                      "flagged_dur_total", "daily_feed_g_corrected")
+                      "flagged_dur_total", "noise_dur_total", "daily_feed_g_corrected")
   cols_to_remove <- intersect(cols_to_remove, names(dt))
   dt[, (cols_to_remove) := NULL]
 

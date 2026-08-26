@@ -205,3 +205,75 @@ test_that("ZhenM_generate_qc_summary produces summary", {
   expect_true("count" %in% names(summary))
   expect_equal(nrow(summary), 2)
 })
+
+test_that("Stack mode: complementary LMM adds back only noise-zeroed losses", {
+  skip_if_not_installed("lme4")
+
+  set.seed(20260826)
+  ids <- c("A001", "A002")
+  n_days <- 30
+  rec_list <- list()
+  for (id in seq_along(ids)) {
+    w0 <- 30000 + 1500 * (id - 1)
+    for (d in 1:n_days) {
+      n_vis <- sample(2:4, 1)
+      dt_i <- data.table::data.table(
+        animal_id = ids[id],
+        record_date = as.Date("2024-01-01") + d - 1,
+        feed_g = pmax(rnorm(n_vis, 320, 25), 150),
+        weight_g = w0 + d * 200 + rnorm(n_vis, 0, 100),
+        duration_sec = rep(300, n_vis),
+        is_outlier_feed = FALSE,
+        flag_speed_too_fast = FALSE,
+        flag_speed_zero_long_duration = FALSE
+      )
+      # 注入「长时间零速」型噪声记录：物理规则会把它置 0，真实约 400g 完全丢失
+      # （A 路径损失）；stack 模式应按时长把这部分近似补回来
+      if (id == 1 && d %in% c(5, 10, 15, 20, 25)) {
+        dt_i$is_outlier_feed[1] <- TRUE
+        dt_i$flag_speed_zero_long_duration[1] <- TRUE
+        dt_i$feed_g[1] <- 400
+        dt_i$duration_sec[1] <- 600
+      }
+      if (id == 2 && d %in% c(8, 16, 24)) {
+        dt_i$is_outlier_feed[1] <- TRUE
+        dt_i$flag_speed_zero_long_duration[1] <- TRUE
+        dt_i$feed_g[1] <- 350
+        dt_i$duration_sec[1] <- 550
+      }
+      rec_list[[length(rec_list) + 1]] <- dt_i
+    }
+  }
+  dt <- data.table::rbindlist(rec_list)
+
+  cfg_a <- list(national_standard = list())                       # A：现状默认
+  cfg_f <- list(national_standard = list(use_lmm_stacking = TRUE)) # F：叠加
+
+  msgs_a <- capture_messages(
+    res_a <- suppressWarnings(ZhenM_standard_to_daily_filtered(data.table::copy(dt), cfg_a))
+  )
+  msgs_f <- capture_messages(
+    res_f <- suppressWarnings(ZhenM_standard_to_daily_filtered(data.table::copy(dt), cfg_f))
+  )
+
+  # A 路径不触发 LMM；F 路径触发 stack 模式并保留台账列
+  expect_false(any(grepl("LMM", msgs_a)))
+  expect_true(any(grepl("LMM Feed Correction \\(stack\\)", msgs_f)))
+  expect_false("lmm_correction_g" %in% names(res_a))
+  expect_true("lmm_correction_g" %in% names(res_f))
+
+  # 噪声置零天：叠加后日值高于纯记录级纠正（把置零丢失的克数补回来）
+  inj_dates <- as.Date("2024-01-01") + c(4, 9, 14, 19, 24)
+  f_day <- res_f[animal_id == "A001" & record_date %in% inj_dates, daily_feed_g]
+  a_day <- res_a[animal_id == "A001" & record_date %in% inj_dates, daily_feed_g]
+  expect_true(all(f_day > a_day))
+  expect_true(all(res_f[animal_id == "A001" & record_date %in% inj_dates,
+                        lmm_correction_g] > 0))
+
+  # J3 不造假：干净天上叠加模式与纯 A 逐值相同（correction 恒为 0）
+  clean_dates <- setdiff(unique(res_f$record_date), inj_dates)
+  expect_equal(
+    res_f[animal_id == "A001" & record_date %in% clean_dates, daily_feed_g],
+    res_a[animal_id == "A001" & record_date %in% clean_dates, daily_feed_g]
+  )
+})
