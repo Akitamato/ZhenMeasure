@@ -109,6 +109,87 @@ test_that("ZhenM_standard_to_daily_filtered respects correction switches", {
   expect_false(any(grepl("LMM", msgs)))
 })
 
+test_that("Improved LMM fallback: duration-proportional compensation + ledger + exit gate", {
+  skip_if_not_installed("lme4")
+
+  set.seed(20260826)
+  ids <- c("A001", "A002")
+  n_days <- 30
+  rec_list <- list()
+  for (id in seq_along(ids)) {
+    w0 <- 30000 + 1500 * (id - 1)
+    for (d in 1:n_days) {
+      n_vis <- sample(2:4, 1)
+      dt_i <- data.table::data.table(
+        animal_id = ids[id],
+        record_date = as.Date("2024-01-01") + d - 1,
+        feed_g = pmax(rnorm(n_vis, 320, 25), 150),
+        weight_g = w0 + d * 200 + rnorm(n_vis, 0, 100),
+        duration_sec = rep(300, n_vis),
+        is_outlier_feed = FALSE,
+        flag_feed_too_high = FALSE,
+        flag_speed_too_fast = FALSE
+      )
+      # 注入虚高记录：feed 5000g 但时长仅 100s → speed_too_fast
+      # （真实采食量约 320g；置零路径会整条丢弃，LMM 应按时长补偿回近似真实值）
+      if (id == 1 && d %in% c(5, 10, 15, 20, 25)) {
+        dt_i$is_outlier_feed[1] <- TRUE
+        dt_i$flag_speed_too_fast[1] <- TRUE
+        dt_i$feed_g[1] <- 5000
+        dt_i$duration_sec[1] <- 100
+      }
+      if (id == 2 && d %in% c(8, 16, 24)) {
+        dt_i$is_outlier_feed[1] <- TRUE
+        dt_i$flag_speed_too_fast[1] <- TRUE
+        dt_i$feed_g[1] <- 4500
+        dt_i$duration_sec[1] <- 90
+      }
+      rec_list[[length(rec_list) + 1]] <- dt_i
+    }
+  }
+  dt <- data.table::rbindlist(rec_list)
+  # 构造一个干净但超 6kg 的天（A002 第 28 天）：验证出口生理校验仍生效，
+  # 且该天不再被从训练集中截断丢弃
+  dt <- data.table::rbindlist(list(dt, data.table::data.table(
+    animal_id = "A002",
+    record_date = as.Date("2024-01-01") + 27,
+    feed_g = c(3300, 3300),
+    weight_g = c(31500 + 28 * 200, 31500 + 28 * 200),
+    duration_sec = c(300, 300),
+    is_outlier_feed = FALSE,
+    flag_feed_too_high = FALSE,
+    flag_speed_too_fast = FALSE
+  )))
+
+  # 记录级纠正关闭（走 V1.1.0 置零路径），LMM 兜底默认开启
+  cfg <- list(national_standard = list(use_record_feed_correction = FALSE))
+  msgs <- capture_messages(
+    res <- suppressWarnings(ZhenM_standard_to_daily_filtered(data.table::copy(dt), cfg))
+  )
+
+  # LMM 兜底确实触发，且台账列保留在输出中
+  expect_true(any(grepl("LMM Feed Correction: corrected", msgs)))
+  expect_true("lmm_correction_g" %in% names(res))
+
+  # 补偿与被丢采食时长成比例：被 flag 天的日值应高于「仅干净记录之和」，
+  # 且校正量为正（把被排除记录的真实采食量加回来）
+  inj_dates <- as.Date("2024-01-01") + c(4, 9, 14, 19, 24)   # A001 的注入日
+  clean_sum_a1 <- dt[animal_id == "A001" & is_outlier_feed == FALSE,
+                     .(clean_sum = sum(feed_g)), by = record_date]
+  m <- merge(
+    res[animal_id == "A001" & record_date %in% inj_dates,
+        .(record_date, daily_feed_g, lmm_correction_g)],
+    clean_sum_a1, by = "record_date"
+  )
+  expect_true(all(m$daily_feed_g > m$clean_sum))
+  expect_true(all(m$lmm_correction_g > 0))
+
+  # 出口生理校验：>6kg 天打标并置 NA（训练集不截断 ≠ 出口放行）
+  d28 <- as.Date("2024-01-01") + 27
+  expect_true(res[animal_id == "A002" & record_date == d28, flag_daily_feed_over_limit])
+  expect_true(is.na(res[animal_id == "A002" & record_date == d28, daily_feed_g]))
+})
+
 test_that("ZhenM_generate_qc_summary produces summary", {
   skip_if_not_installed("data.table")
 

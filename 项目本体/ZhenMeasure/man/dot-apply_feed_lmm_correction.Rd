@@ -4,9 +4,31 @@
 \alias{.apply_feed_lmm_correction}
 \title{LMM Feed Intake Correction Engine}
 \usage{
-.apply_feed_lmm_correction(daily_dt, raw_dt)
+.apply_feed_lmm_correction(daily_dt, raw_dt, ns_cfg = NULL)
+}
+\arguments{
+\item{daily_dt}{Daily-level data.table (aggregated output of Step 5)}
+
+\item{raw_dt}{Standard-record-level data.table with QC flags}
+
+\item{ns_cfg}{Optional national_standard config list (read for `speed_max`)}
+}
+\value{
+Daily-level data.table with corrected daily_feed_g and ledger column
+  lmm_correction_g
 }
 \description{
-LMM Feed Intake Correction Engine
+日级兜底校正：仅在记录级物理纠正失败或被配置关闭时触发。
+Phase 1 重构（issue #5，V1.1.2）修复四个统计缺陷：
+1. 协变量加入 visits_n——异常条数与当日活动强度机械相关，不控制强度时
+   flag 系数会把「当天访问多」的效应误吸收进补偿量；
+2. 被 flag 记录改用「时长量纲特征」入模：补偿量与被丢采食时长成比例
+   （近似与丢失的真实克数成比例），而非与异常次数成比例；
+   无时长列或日级 flag（STL）自动退回计数特征；
+3. 训练集不再按 0 < normal_feed_sum ≤ 6000 截断——截断系统性丢弃大采食天，
+   让系数低估真实损失；生理上限只在出口做校验（打标 + 置 NA），不筛训练样本；
+4. 补偿加回量受物理速率约束：add-back ≤ speed_max × 被flag记录总时长 / 60
+   （把记录级物理规则的先验吸收进 LMM）。
+另新增台账列 lmm_correction_g（每日净校正值），全程可追溯。
 }
 \keyword{internal}

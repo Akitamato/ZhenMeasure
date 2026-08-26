@@ -230,8 +230,8 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
     result[, flag_daily_feed_over_limit := !is.na(daily_feed_g) & daily_feed_g > 6000]
     result[!is.na(daily_feed_g) & (daily_feed_g <= 0 | daily_feed_g > 6000), daily_feed_g := NA_real_]
   } else {
-    # 记录级纠正失败/关闭且 LMM 未被禁用：按现有日级 LMM 校正兜底
-    result <- .apply_feed_lmm_correction(result, dt)
+    # 记录级纠正失败/关闭且 LMM 未被禁用：日级 LMM 校正兜底
+    result <- .apply_feed_lmm_correction(result, dt, ns_cfg)
   }
   # =================================================
 
@@ -367,8 +367,27 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
 }
 
 #' LMM Feed Intake Correction Engine
+#'
+#' 日级兜底校正：仅在记录级物理纠正失败或被配置关闭时触发。
+#' Phase 1 重构（issue #5，V1.1.2）修复四个统计缺陷：
+#' 1. 协变量加入 visits_n——异常条数与当日活动强度机械相关，不控制强度时
+#'    flag 系数会把「当天访问多」的效应误吸收进补偿量；
+#' 2. 被 flag 记录改用「时长量纲特征」入模：补偿量与被丢采食时长成比例
+#'    （近似与丢失的真实克数成比例），而非与异常次数成比例；
+#'    无时长列或日级 flag（STL）自动退回计数特征；
+#' 3. 训练集不再按 0 < normal_feed_sum ≤ 6000 截断——截断系统性丢弃大采食天，
+#'    让系数低估真实损失；生理上限只在出口做校验（打标 + 置 NA），不筛训练样本；
+#' 4. 补偿加回量受物理速率约束：add-back ≤ speed_max × 被flag记录总时长 / 60
+#'    （把记录级物理规则的先验吸收进 LMM）。
+#' 另新增台账列 lmm_correction_g（每日净校正值），全程可追溯。
+#'
+#' @param daily_dt Daily-level data.table (aggregated output of Step 5)
+#' @param raw_dt Standard-record-level data.table with QC flags
+#' @param ns_cfg Optional national_standard config list (read for `speed_max`)
+#' @return Daily-level data.table with corrected daily_feed_g and ledger column
+#'   lmm_correction_g
 #' @keywords internal
-.apply_feed_lmm_correction <- function(daily_dt, raw_dt) {
+.apply_feed_lmm_correction <- function(daily_dt, raw_dt, ns_cfg = NULL) {
   dt <- data.table::copy(daily_dt)
   
   # 10 error flags for single record anomalies (including STL time series flag)
@@ -403,123 +422,178 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
   daily_features <- raw_dt[, .(
     normal_feed_sum = sum(.SD[[feed_col]][is_feed_normal_record == TRUE], na.rm = TRUE)
   ), by = .(animal_id, record_date)]
-  
-  # Add daily occurrence flags for each feature
+
+  dt <- merge(dt, daily_features, by = c("animal_id", "record_date"), all.x = TRUE)
+
+  # 每 flag 类型构建两个日级特征：
+  #   has_<flag> : 异常发生次数（计数口径）
+  #   dur_<flag> : 该类型被 flag 记录的累计有效时长（秒，量纲口径，优先使用）
+  # 时长保留了单次采食事件的规模信息：同样是 speed_too_fast，丢掉 60s 的真实
+  # 采食和丢掉 5s 的不应获得同样的补偿。flag_STL_FI 是日级标记，只用计数。
+  dur_col <- if ("duration_sec" %in% names(raw_dt)) "duration_sec"
+             else if ("Duration" %in% names(raw_dt)) "Duration" else NULL
+
   for (flg in err_flags) {
     if (flg %in% names(raw_dt)) {
-      # 用异常记录条数（次数）而非"是否发生"（布尔），使校正量与异常程度成比例
-      flg_agg <- raw_dt[, .(flg_occurred = sum(get(flg) == TRUE, na.rm = TRUE)), by = .(animal_id, record_date)]
-      data.table::setnames(flg_agg, "flg_occurred", paste0("has_", flg))
-      daily_features <- merge(daily_features, flg_agg, by = c("animal_id", "record_date"), all.x = TRUE)
+      if (!is.null(dur_col) && flg != "flag_STL_FI") {
+        flg_agg <- raw_dt[get(flg) %in% TRUE, .(
+          flg_n = .N,
+          flg_dur = sum(pmax(as.numeric(get(dur_col)), 0), na.rm = TRUE)
+        ), by = .(animal_id, record_date)]
+      } else {
+        flg_agg <- raw_dt[get(flg) %in% TRUE, .(
+          flg_n = .N,
+          flg_dur = 0
+        ), by = .(animal_id, record_date)]
+      }
+      data.table::setnames(flg_agg, c("flg_n", "flg_dur"),
+                           c(paste0("has_", flg), paste0("dur_", flg)))
+      dt <- merge(dt, flg_agg, by = c("animal_id", "record_date"), all.x = TRUE)
+      cnt_name <- paste0("has_", flg)
+      dur_name <- paste0("dur_", flg)
+      dt[is.na(get(cnt_name)), (cnt_name) := 0L]
+      dt[is.na(get(dur_name)), (dur_name) := 0]
     } else {
       # Default to 0 if a flag is missing in the input
-      daily_features[, paste0("has_", flg) := 0L]
+      dt[, paste0("has_", flg) := 0L]
+      dt[, paste0("dur_", flg) := 0]
     }
   }
-  
-  dt <- merge(dt, daily_features, by = c("animal_id", "record_date"), all.x = TRUE)
-  
-  # ==== 2. Validity interception for 0~6kg range ====
-  # 6kg (6000g) 为猪只单日采食量生理上限。超过上限的天标记为 flag_daily_feed_over_limit，
-  # 并将超出 [0, 6000] 范围的天置 NA（含 >6kg 超限与 <=0 过低）。
-  dt[, flag_daily_feed_over_limit := !is.na(normal_feed_sum) & normal_feed_sum > 6000]
-  dt[!is.na(normal_feed_sum) & (normal_feed_sum <= 0 | normal_feed_sum > 6000),
-     normal_feed_sum := NA_real_]
-  
-  # ==== 3. Construct individual daily weight gain (Covariate) ====
+
+  # 被 flag 记录的当日总时长（任意 flag 口径、不重复计多 flag 记录）：
+  # 用作补偿加回量的物理速率封顶基数
+  if (!is.null(dur_col) && "is_outlier_feed" %in% names(raw_dt)) {
+    dur_tot <- raw_dt[is_outlier_feed %in% TRUE, .(
+      flagged_dur_total = sum(pmax(as.numeric(get(dur_col)), 0), na.rm = TRUE)
+    ), by = .(animal_id, record_date)]
+    dt <- merge(dt, dur_tot, by = c("animal_id", "record_date"), all.x = TRUE)
+    dt[is.na(flagged_dur_total), flagged_dur_total := 0]
+  } else {
+    dt[, flagged_dur_total := 0]
+  }
+
+  # ==== 2. Construct individual daily weight gain (Covariate) ====
   data.table::setorder(dt, animal_id, record_date)
   # 个体日增重 = 相邻两天体重差 / 相邻两天天数差（g/天）
   dt[, adg_g := c(NA, diff(daily_weight_g) / as.numeric(diff(record_date))), by = animal_id]
   # 首日无前值，补 0 避免干扰训练
   dt[is.na(adg_g), adg_g := 0]
   
-  # ==== 4. LMM Preparation and Modeling ====
+  # ==== 3. LMM Preparation and Modeling ====
   if (requireNamespace("lme4", quietly = TRUE)) {
-    # Only days with valid normal_feed_sum (not NA) are modeled as the dependent variable
+    # Only days with valid covariates are modeled as the dependent variable。
+    # 注意：训练集不再按 0 < normal_feed_sum ≤ 6000 截断（Phase 1 修复）——
+    # 截断会系统性丢弃大采食天、低估损失系数；生理上限只在出口校验（见第 4 步）
     train_idx <- !is.na(dt$normal_feed_sum) & !is.na(dt$daily_weight_g) & !is.na(dt$adg_g)
-    
+
     # Include Location as a fixed effect only if it exists and has > 1 unique value
     has_loc <- "location" %in% names(dt) && length(unique(stats::na.omit(dt$location))) > 1
     has_breed <- "breed" %in% names(dt) && length(unique(stats::na.omit(dt$breed))) > 1
-    
+
     if (sum(train_idx) > 30) {
-      train_data <- dt[train_idx]
       # Rescale large covariates (grams to kg) to avoid lme4 optimizer warning: "Some predictor variables are on very different scales"
       formula_str <- "normal_feed_sum ~ I(daily_weight_g / 1000) + I(adg_g / 1000)"
-      
-      if (has_loc) formula_str <- paste0(formula_str, " + location")
-      if (has_breed) formula_str <- paste0(formula_str, " + breed")
-      
-      # Extract error types that actually varied in this dataset
-      active_flags <- character()
+
+      # 解混杂关键项：异常条数与当日活动强度机械相关（访问越多的天越容易出现异常
+      # 记录），不控制 visits_n 时 flag 系数会把「当天采食活动多」误吸收进补偿量
+      if ("visits_n" %in% names(dt)) formula_str <- paste(formula_str, "+ visits_n")
+      if (has_loc) formula_str <- paste(formula_str, "+ location")
+      if (has_breed) formula_str <- paste(formula_str, "+ breed")
+
+      # 每个 flag 选一个入模特征：优先时长量纲；该特征在训练集中无变异时退回计数
+      active_feats <- character()
       for (flg in err_flags) {
-        has_flg_name <- paste0("has_", flg)
-        # A valid feature must have both TRUE and FALSE cases in the training set
-        if (length(unique(train_data[[has_flg_name]])) > 1) {
-          # Convert to 0/1 integer for multiple regression
-          dt[, (has_flg_name) := as.integer(get(has_flg_name))]
-          formula_str <- paste0(formula_str, " + ", has_flg_name)
-          active_flags <- c(active_flags, has_flg_name)
+        picked <- NULL
+        for (cand in c(paste0("dur_", flg), paste0("has_", flg))) {
+          vals <- dt[[cand]][train_idx]
+          if (length(unique(vals[!is.na(vals)])) > 1) {
+            picked <- cand
+            break
+          }
+        }
+        if (!is.null(picked)) {
+          active_feats <- c(active_feats, picked)
+          formula_str <- paste(formula_str, "+", picked)
         }
       }
-      
+
       formula_str <- paste0(formula_str, " + (1 | animal_id)")
-      
+
       lmm_fit <- tryCatch({
         lme4::lmer(as.formula(formula_str), data = dt[train_idx])
       }, error = function(e) {
         warning("LMM model failed to converge or encountered an error. Falling back to uncorrected daily feed. Details: ", e$message)
         NULL
       })
-      
+
       if (!is.null(lmm_fit)) {
         # Extract fixed effect coefficients
         fixed_eff <- lme4::fixef(lmm_fit)
-        
+
         # Calculate daily correction value for each record
-        # correction = sum_{active_flags} ( - beta_i * I_flag_i)
-        dt[, correction_g := 0]
-        
-        for (i in seq_along(active_flags)) {
-          flg_name <- active_flags[i]
-          if (flg_name %in% names(fixed_eff)) {
-            beta_val <- fixed_eff[flg_name]
-            dt[, correction_g := correction_g - beta_val * get(flg_name)]
+        # correction = sum_active ( - beta_i * feature_i )；
+        # β 预期为负（被 flag 时长越长、干净日和越低），故 -β×feature 为正的补偿加回
+        dt[, lmm_correction_g := 0]
+
+        for (feat in active_feats) {
+          if (feat %in% names(fixed_eff)) {
+            beta_val <- fixed_eff[[feat]]
+            dt[, lmm_correction_g := lmm_correction_g - beta_val * get(feat)]
           }
         }
-        
+
+        # 物理速率封顶：补偿加回量 ≤ speed_max × 被flag记录总时长 / 60，
+        # 即加回部分隐含的采食速率不得超过生理上限（吸收记录级物理规则作先验）
+        speed_max <- if (!is.null(ns_cfg$speed_max)) as.numeric(ns_cfg$speed_max) else 170
+        cap_g <- speed_max * dt$flagged_dur_total / 60
+        dt[, lmm_correction_g := pmin(lmm_correction_g, cap_g)]
+
         # Add correction to the normal daily feed intake
-        dt[!is.na(normal_feed_sum), daily_feed_g_corrected := normal_feed_sum + correction_g]
-        
-        # Log the number of successfully corrected daily records (where absolute correction > 0)
-        n_corrected <- sum(abs(dt$correction_g) > 0.001 & !is.na(dt$daily_feed_g_corrected), na.rm = TRUE)
-        message(sprintf("LMM Feed Correction: Successfully corrected %d daily records.", n_corrected))
-        
-        # Overwrite the main daily feed_g variable
-        # Negative or zero corrected values are treated as invalid → set to NA for imputation
+        dt[!is.na(normal_feed_sum), daily_feed_g_corrected := normal_feed_sum + lmm_correction_g]
+
+        n_corrected <- sum(abs(dt$lmm_correction_g) > 0.001 & !is.na(dt$daily_feed_g_corrected), na.rm = TRUE)
+        n_capped <- sum(dt$flagged_dur_total > 0 &
+                          (cap_g - dt$lmm_correction_g) <= 0.001, na.rm = TRUE)
+        mean_abs_corr <- if (n_corrected > 0) {
+          mean(abs(dt$lmm_correction_g[abs(dt$lmm_correction_g) > 0.001]), na.rm = TRUE)
+        } else 0
+        message(sprintf("LMM Feed Correction: corrected %d daily records (%d rate-capped), mean |correction| = %.1f g.",
+                        n_corrected, n_capped, mean_abs_corr))
+
+        # Overwrite the main daily feed_g variable（台账列 lmm_correction_g 保留在输出中）
         dt[, daily_feed_g := daily_feed_g_corrected]
-        dt[daily_feed_g <= 0 & !is.na(daily_feed_g), daily_feed_g := NA_real_]
-        dt[, c("correction_g", "daily_feed_g_corrected") := NULL]
-        
       } else {
         message("LMM Feed Correction: Model fitting failed or skipped, 0 records corrected.")
         dt[, daily_feed_g := normal_feed_sum]
+        dt[, lmm_correction_g := 0]
       }
     } else {
       # If training samples are too few, use initial normal_feed_sum directly without LMM inference
       message(sprintf("LMM Feed Correction: Insufficient valid samples for training (%d <= 30), 0 records corrected.", sum(train_idx)))
       dt[, daily_feed_g := normal_feed_sum]
+      dt[, lmm_correction_g := 0]
     }
   } else {
     warning("Package 'lme4' is not installed. Ignoring LMM feed correction. Proceeding with raw normal daily sum.")
     dt[, daily_feed_g := normal_feed_sum]
+    dt[, lmm_correction_g := 0]
   }
+
+  # ==== 4. 出口生理校验（对所有路径统一执行） ====
+  # 6kg (6000g) 为猪只单日采食量生理上限：超限天标记 flag_daily_feed_over_limit
+  # 并置 NA（等插补）；≤0 的天同样置 NA。此校验只做出口把关，不筛训练样本。
+  dt[, flag_daily_feed_over_limit := !is.na(daily_feed_g) & daily_feed_g > 6000]
+  dt[!is.na(daily_feed_g) & daily_feed_g <= 0, daily_feed_g := NA_real_]
+  dt[flag_daily_feed_over_limit == TRUE, daily_feed_g := NA_real_]
   
-  # Clean temporary feature columns used in the process
-  cols_to_remove <- c("normal_feed_sum", "adg_g", paste0("has_", err_flags))
+  # Clean temporary feature columns used in the process（台账列 lmm_correction_g 保留）
+  cols_to_remove <- c("normal_feed_sum", "adg_g",
+                      paste0("has_", err_flags), paste0("dur_", err_flags),
+                      "flagged_dur_total", "daily_feed_g_corrected")
+  cols_to_remove <- intersect(cols_to_remove, names(dt))
   dt[, (cols_to_remove) := NULL]
-  
-  dt
+
+  dt[]
 }
 
 
