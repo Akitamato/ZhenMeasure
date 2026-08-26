@@ -19,7 +19,8 @@
 #   E_inj 不校正（污染原样，脚本内直接按天求和，不走 Step5 校正门控）
 #   C0 置零不补偿  B 置零+LMM  A 记录级物理  D 记录级+FCR锚
 #
-# 运行：/data6/home/yhliao/00_Software/conda/miniconda3/envs/yhliao_R/bin/Rscript 测试/simulation_benchmark.R
+# 运行：/data6/home/yhliao/00_Software/conda/miniconda3/envs/yhliao_R/bin/Rscript 测试/simulation_benchmark.R [YANGXIANG|FIRE|NEDAP]
+#   设备参数缺省为 YANGXIANG；泛化复测时传 FIRE / NEDAP（数据在 demo_input 对应厂商目录）
 
 rm(list = ls())
 options(scipen = 999)
@@ -31,15 +32,20 @@ library(data.table)
 pkg_dir <- file.path(project_root, "项目本体/ZhenMeasure")
 pkgload::load_all(pkg_dir, quiet = TRUE, export_all = TRUE)
 
-# --- 路径与配置 ---
-data_path   <- file.path(project_root, "测试/demo/demo_input/YANGXIANG_扬翔/原始数据/南沙")
-format_path <- file.path(project_root, "测试/demo/demo_input/YANGXIANG_扬翔/附加信息/YANGXIANG_data_format.json")
-if (!file.exists(format_path)) {
-  format_path <- list.files(file.path(project_root, "测试/demo/demo_input/YANGXIANG_扬翔/附加信息"),
-                            pattern = "\\.json$", full.names = TRUE)[1]
+# --- 设备选择与路径 ---
+dev_args <- commandArgs(trailingOnly = TRUE)
+DEVICE <- if (length(dev_args) >= 1) toupper(dev_args[1]) else "YANGXIANG"
+device_dirs <- c(YANGXIANG = "YANGXIANG_扬翔", FIRE = "FIRE_奥斯本", NEDAP = "Nedap_睿保乐")
+if (!DEVICE %in% names(device_dirs)) {
+  stop("未知设备类型：", DEVICE, "（可选 YANGXIANG / FIRE / NEDAP）", call. = FALSE)
 }
-out_dir <- file.path(project_root, "测试/demo/demo_output/YANGXIANG_扬翔",
-                     sprintf("injection_benchmark_%s", format(Sys.time(), "%Y%m%d_%H%M%S")))
+dev_base <- file.path(project_root, "测试/demo/demo_input", device_dirs[[DEVICE]])
+data_path   <- file.path(dev_base, "原始数据")
+format_path <- list.files(file.path(dev_base, "附加信息"),
+                          pattern = "[.]json$", full.names = TRUE)[1]
+out_dir <- file.path(project_root, "测试/demo/demo_output", device_dirs[[DEVICE]],
+                     sprintf("injection_benchmark_%s_%s", tolower(DEVICE),
+                             format(Sys.time(), "%Y%m%d_%H%M%S")))
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 base_ns <- list(test_weight_range = c(200, 20))   # 南沙脚本既有用法，各变体一致
@@ -66,7 +72,7 @@ variants <- list(
 # ============================================================
 cat(">>> Steps 1-4：读取 + Overall/Weight/Feed QC ...\n")
 t0 <- Sys.time()
-standard_data <- ZhenM_read_data(data_path, "YANGXIANG", format_path, NULL)
+standard_data <- ZhenM_read_data(data_path, DEVICE, format_path, NULL)
 cfg_base <- ZhenM_merge_config(list(national_standard = base_ns))
 qc_result <- ZhenM_qc_overall(standard_data, config = cfg_base, logger = NULL, keep_ids = NULL)
 standard_data <- qc_result$records
