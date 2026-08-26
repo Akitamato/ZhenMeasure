@@ -43,9 +43,26 @@ dev_base <- file.path(project_root, "测试/demo/demo_input", device_dirs[[DEVIC
 data_path   <- file.path(dev_base, "原始数据")
 format_path <- list.files(file.path(dev_base, "附加信息"),
                           pattern = "[.]json$", full.names = TRUE)[1]
+
+# G_cens 保守化参数（CLI 可选覆盖）：Rscript sim.R <DEVICE> <quantile> <shrink>
+#   quantile：分位数删失界（0~1，传入 0 表示退回纯物理界）；shrink：复活量折扣
+G_QUANTILE <- if (length(dev_args) >= 2 && is.finite(as.numeric(dev_args[2]))) {
+  as.numeric(dev_args[2])
+} else 0
+G_SHRINK <- if (length(dev_args) >= 3 && is.finite(as.numeric(dev_args[3]))) {
+  as.numeric(dev_args[3])
+} else 0.7
+settings_tag <- if (length(dev_args) >= 2) {
+  sprintf("_q%s_s%.2f", G_QUANTILE, G_SHRINK)
+} else ""
+
 out_dir <- file.path(project_root, "测试/demo/demo_output", device_dirs[[DEVICE]],
-                     sprintf("injection_benchmark_%s_%s", tolower(DEVICE),
-                             format(Sys.time(), "%Y%m%d_%H%M%S")))
+                     sprintf("injection_benchmark_%s_%s%s", tolower(DEVICE),
+                             format(Sys.time(), "%Y%m%d_%H%M%S"), settings_tag))
+cat(sprintf(">>> 设备=%s | G 保守化：quantile=%s shrink=%.2f\n",
+            DEVICE,
+            if (G_QUANTILE > 0) as.character(G_QUANTILE) else "物理界(无分位)",
+            G_SHRINK))
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 base_ns <- list(test_weight_range = c(200, 20))   # 南沙脚本既有用法，各变体一致
@@ -174,7 +191,8 @@ eval_metrics <- function(daily_est, truth, affected = NULL) {
 # 方向正确、方差略低估，PoC 可接受。
 # ============================================================
 .em_censored_daily <- function(dt_qc, seed, max_iter = 5,
-                               clean_subsample = 250000L, speed_max = 170) {
+                               clean_subsample = 250000L, speed_max = 170,
+                               quantile_bound = NULL, shrink = 0.7) {
   noise_flags <- c("flag_feed_negative", "flag_speed_extreme_low_feed",
                    "flag_speed_zero_long_duration")
   has_noise <- Reduce(`|`, lapply(noise_flags, function(f)
@@ -193,7 +211,11 @@ eval_metrics <- function(daily_est, truth, affected = NULL) {
   if (sum(has_noise) == 0 || sum(is_clean) < 1000) return(NULL)
   id_v <- dt_qc$animal_id
 
-  # 删失上界 U（克）：speed_max × 时长 / 60；时长不可用者用个体干净中位时长兜底
+  # 删失上界 U（克）：默认取 min(物理上限 speed_max×时长/60,
+  #   个体干净速率分位数 × 时长 / 60)。分位数界把期望值从「远处的物理尾部」
+  #   拉回该个体真实采食水平，避免过补（保守化杠杆②）；
+  #   quantile_bound=NULL 时退回纯物理界（原行为）。
+  # 时长不可用者用个体干净中位时长兜底
   med_dur_by <- tapply(dur_v[is_clean], id_v[is_clean], median, na.rm = TRUE)
   gmed <- stats::median(dur_v[is_clean], na.rm = TRUE)
   eff_dur <- dur_v[has_noise]
@@ -203,7 +225,16 @@ eval_metrics <- function(daily_est, truth, affected = NULL) {
     md[is.na(md)] <- gmed
     eff_dur[miss] <- md
   }
-  u_bound <- pmax(speed_max * eff_dur / 60, 1)
+  u_phys <- pmax(speed_max * eff_dur / 60, 1)
+  u_bound <- u_phys
+  if (!is.null(quantile_bound) && is.finite(quantile_bound)) {
+    rate_clean <- feed_vec[is_clean] / dur_v[is_clean]
+    rate_q_by <- tapply(rate_clean, id_v[is_clean],
+                        function(x) as.numeric(stats::quantile(x, quantile_bound, na.rm = TRUE)))
+    rate_q <- as.numeric(rate_q_by)[match(id_v[has_noise], names(rate_q_by))]
+    rate_q[is.na(rate_q)] <- as.numeric(stats::quantile(rate_clean, quantile_bound, na.rm = TRUE))
+    u_bound <- pmin(u_phys, pmax(rate_q * eff_dur / 60, 1))
+  }
 
   # 建模池：干净子样本（固定种子）+ 全部噪声行
   set.seed(seed)
@@ -248,7 +279,9 @@ eval_metrics <- function(daily_est, truth, affected = NULL) {
   }
 
   feed_resurrect <- feed_vec
-  feed_resurrect[pool_noise_i] <- pmin(pmax(exp(z), 1e-3), u_bound)
+  # 保守化杠杆①：复活量打折扣 shrink（默认 0.7）。宁可少补不可多补——
+  # 低估方向安全（残余 −2~−4% 可接受），高估会把个体 ADFI 整体抬高。
+  feed_resurrect[pool_noise_i] <- shrink * pmin(pmax(exp(z), 1e-3), u_bound)
 
   oor <- if ("flag_feed_out_of_range" %in% names(dt_qc)) {
     dt_qc$flag_feed_out_of_range %in% TRUE
@@ -300,7 +333,9 @@ for (rate in INJECTION_RATES) {
   # G_cens：Phase 2 PoC —— A 路径打底 + 右删失 Tobit EM 复活噪声置零记录
   cat("    G_cens: 拟合删失混合模型（EM）...\n")
   daily_raw_g <- tryCatch(
-    .em_censored_daily(dt_qc, SET_SEED + round(rate * 1000)),
+    .em_censored_daily(dt_qc, SET_SEED + round(rate * 1000),
+                       quantile_bound = if (G_QUANTILE > 0) G_QUANTILE else NULL,
+                       shrink = G_SHRINK),
     error = function(e) {
       message(sprintf("G_cens failed: %s", conditionMessage(e)))
       NULL
