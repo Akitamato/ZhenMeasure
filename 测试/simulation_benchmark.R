@@ -56,7 +56,9 @@ variants <- list(
   list(key = "A",  label = "A_V111现状(记录级物理)",
        sw = list()),
   list(key = "D",  label = "D_记录级+FCR锚",
-       sw = list(use_fcr_anchor = TRUE))
+       sw = list(use_fcr_anchor = TRUE)),
+  list(key = "F",  label = "F_记录级+叠加LMM",
+       sw = list(use_lmm_stacking = TRUE))
 )
 
 # ============================================================
@@ -156,6 +158,107 @@ eval_metrics <- function(daily_est, truth, affected = NULL) {
   list(acc = acc, bias = bias, coverage = covg, r = r_pearson, rho = rho_sp, by_type = type_tab)
 }
 
+# ============================================================
+# Phase 2 PoC：右删失 Tobit + lme4 的 EM 迭代（issue #5 步骤2）
+# 被物理规则「噪声置零」的记录，其真实采食量 ∈ (0, speed_max×时长/60]，
+# 在对数尺度上是右删失观测。用干净记录拟合 log(feed) ~ log(dur)+(1|animal)
+# 混合模型，EM 迭代更新删失记录的截尾条件期望，最后以 exp(ẑ) 复活这些
+# 记录（A 路径纠正值打底），按 Step5 同款日规则聚合。近似口径：
+# 删失行的当前期望直接当作观测入模（ECM 风格）、σ 只由伪残差估计——
+# 方向正确、方差略低估，PoC 可接受。
+# ============================================================
+.em_censored_daily <- function(dt_qc, seed, max_iter = 5,
+                               clean_subsample = 250000L, speed_max = 170) {
+  noise_flags <- c("flag_feed_negative", "flag_speed_extreme_low_feed",
+                   "flag_speed_zero_long_duration")
+  has_noise <- Reduce(`|`, lapply(noise_flags, function(f)
+    if (f %in% names(dt_qc)) dt_qc[[f]] %in% TRUE else rep(FALSE, nrow(dt_qc))))
+
+  corr <- .correct_feed_records(data.table::copy(dt_qc))
+  feed_vec <- corr$feed_corrected
+
+  dur_name <- if ("duration_sec" %in% names(dt_qc)) "duration_sec"
+              else if ("Duration" %in% names(dt_qc)) "Duration" else NULL
+  if (is.null(dur_name) || !"animal_id" %in% names(dt_qc)) return(NULL)
+  dur_v <- suppressWarnings(as.numeric(dt_qc[[dur_name]]))
+
+  is_clean <- !has_noise & !is.na(feed_vec) & feed_vec > 0 &
+              !is.na(dur_v) & dur_v > 0
+  if (sum(has_noise) == 0 || sum(is_clean) < 1000) return(NULL)
+  id_v <- dt_qc$animal_id
+
+  # 删失上界 U（克）：speed_max × 时长 / 60；时长不可用者用个体干净中位时长兜底
+  med_dur_by <- tapply(dur_v[is_clean], id_v[is_clean], median, na.rm = TRUE)
+  gmed <- stats::median(dur_v[is_clean], na.rm = TRUE)
+  eff_dur <- dur_v[has_noise]
+  miss <- is.na(eff_dur) | eff_dur <= 0
+  if (any(miss)) {
+    md <- as.numeric(med_dur_by)[match(id_v[has_noise][miss], names(med_dur_by))]
+    md[is.na(md)] <- gmed
+    eff_dur[miss] <- md
+  }
+  u_bound <- pmax(speed_max * eff_dur / 60, 1)
+
+  # 建模池：干净子样本（固定种子）+ 全部噪声行
+  set.seed(seed)
+  pool_clean_i <- which(is_clean)
+  if (length(pool_clean_i) > clean_subsample) {
+    pool_clean_i <- sample(pool_clean_i, clean_subsample)
+  }
+  pool_noise_i <- which(has_noise)
+  n_c <- length(pool_clean_i)
+
+  durs_pool <- c(dur_v[pool_clean_i], eff_dur)
+  ids_pool  <- c(id_v[pool_clean_i], id_v[pool_noise_i])
+  x_log <- log(durs_pool)
+  sel_noise <- c(rep(FALSE, n_c), rep(TRUE, length(pool_noise_i)))
+  u_log_noise <- log(u_bound)
+
+  # 初始化隐变量：个体干净速率 × 时长（物理一致），封顶到 U
+  rate_med <- tapply(feed_vec[pool_clean_i] / dur_v[pool_clean_i],
+                     id_v[pool_clean_i], median, na.rm = TRUE)
+  gr <- as.numeric(rate_med)[match(ids_pool[sel_noise], names(rate_med))]
+  gr[is.na(gr)] <- stats::median(feed_vec[pool_clean_i] / dur_v[pool_clean_i],
+                                 na.rm = TRUE)
+  z <- pmin(log(gr * durs_pool[sel_noise]), u_log_noise)
+
+  animal_f <- factor(ids_pool)
+  for (it in seq_len(max_iter)) {
+    y_pool <- c(log(feed_vec[pool_clean_i]), z)
+    fit <- tryCatch(lme4::lmer(y_pool ~ x_log + (1 | animal_f)),
+                    error = function(e) NULL)
+    if (is.null(fit)) return(NULL)
+    beta <- lme4::fixef(fit); sig <- stats::sigma(fit)
+    re_obj <- lme4::ranef(fit)$animal_f
+    b <- re_obj[[1]]; names(b) <- rownames(re_obj)
+    bvec <- b[as.character(ids_pool[sel_noise])]
+    bvec[is.na(bvec)] <- 0
+    mu <- beta[[1]] + beta[[2]] * x_log[sel_noise] + bvec
+    alpha <- (u_log_noise - mu) / sig
+    z_new <- mu - sig * stats::dnorm(alpha) / pmax(stats::pnorm(alpha), 1e-12)
+    delta <- mean(abs(z_new - z)); z <- z_new
+    cat(sprintf("      [EM iter %d] mean|dz|=%.4f\n", it, delta))
+    if (delta < 1e-3) break
+  }
+
+  feed_resurrect <- feed_vec
+  feed_resurrect[pool_noise_i] <- pmin(pmax(exp(z), 1e-3), u_bound)
+
+  oor <- if ("flag_feed_out_of_range" %in% names(dt_qc)) {
+    dt_qc$flag_feed_out_of_range %in% TRUE
+  } else rep(FALSE, nrow(dt_qc))
+  agg <- data.table::data.table(animal_id = id_v, record_date = dt_qc$record_date,
+                                f = feed_resurrect, oor = oor)
+  daily <- agg[, .(
+    daily_feed_g = if (any(oor)) NA_real_ else {
+      v <- f[f > 0 & !is.na(f)]
+      if (length(v) == 0) NA_real_ else sum(v)
+    }
+  ), by = .(animal_id, record_date)]
+  daily[!is.na(daily_feed_g) & daily_feed_g > 6000, daily_feed_g := NA_real_]
+  daily[]
+}
+
 results <- list(); type_rows <- list()
 for (rate in INJECTION_RATES) {
   cat(sprintf(">>> 注入率 %.0f%% ...\n", rate * 100))
@@ -187,6 +290,31 @@ for (rate in INJECTION_RATES) {
   cat(sprintf("    E_inj %-24s acc=%.3f bias=%+.3f cover=%.3f\n",
               "E_污染不校正", met_e$acc, met_e$bias, met_e$coverage))
   rm(daily_raw_e); invisible(gc(verbose = FALSE))
+
+  # G_cens：Phase 2 PoC —— A 路径打底 + 右删失 Tobit EM 复活噪声置零记录
+  cat("    G_cens: 拟合删失混合模型（EM）...\n")
+  daily_raw_g <- tryCatch(
+    .em_censored_daily(dt_qc, SET_SEED + round(rate * 1000)),
+    error = function(e) {
+      message(sprintf("G_cens failed: %s", conditionMessage(e)))
+      NULL
+    })
+  if (!is.null(daily_raw_g)) {
+    met_g <- eval_metrics(daily_raw_g, truth_daily, affected)
+    results[[length(results) + 1]] <- data.table(
+      rate = rate, variant = "G_cens", label = "G_A路径+删失EM复活",
+      accuracy = met_g$acc, bias = met_g$bias, coverage = met_g$coverage,
+      adfi_r = met_g$r, adfi_rho = met_g$rho,
+      na_days = sum(is.na(daily_raw_g$daily_feed_g)))
+    if (!is.null(met_g$by_type)) {
+      met_g$by_type[, `:=`(rate = rate, variant = "G_cens")]
+      type_rows[[length(type_rows) + 1]] <- met_g$by_type
+    }
+    cat(sprintf("    %-6s %-24s acc=%.3f bias=%+.3f cover=%.3f\n",
+                "G_cens", "G_A路径+删失EM复活", met_g$acc, met_g$bias,
+                met_g$coverage))
+    rm(daily_raw_g); invisible(gc(verbose = FALSE))
+  }
 
   for (v in variants) {
     cfg_v <- ZhenM_merge_config(list(national_standard = modifyList(base_ns, v$sw)))
