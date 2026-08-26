@@ -114,6 +114,18 @@ Comparison test scripts are in `V项目测试与开发/测试/与中农程序对
 
 ## Bug Fix Log
 
+### V1.1.2
+
+Phase 1：日级 LMM 兜底校正重构（issue #5，分支 `feat/feed-correction-switches`）。动机：注入式仿真基准证明旧 LMM 设定为净负贡献。四项修复（`zhenm_daily_aggregate_filtered.R` `.apply_feed_lmm_correction()`）：
+- **visits_n 协变量**：异常条数与当日活动强度机械相关，不控制强度则 flag 系数把「当天访问多」误吸收进补偿量。
+- **时长量纲特征**：被 flag 记录按 `dur_<flag>`（累计有效秒数）入模，补偿与被丢采食时长成比例而非与次数成比例；无时长列或日级 flag（`flag_STL_FI`）自动退回计数特征。
+- **训练集去截断**：不再按 `0 < normal_feed_sum ≤ 6000` 筛训练样本；6kg 生理上限只在出口统一校验（打标 + 置 NA），对所有路径一致。
+- **物理速率封顶**：补偿加回量 ≤ `speed_max × 被flag总时长/60`（吸收记录级物理规则作先验）；`speed_max` 从 config 接线（原硬编码 170）。
+- **台账列** `lmm_correction_g` 保留在日级输出中可追溯。
+- 新增单测覆盖 LMM 兜底路径（test-qc.R）。
+
+基准验证（`测试/simulation_benchmark.R`，同种子复测）：变体 B 净贡献由负转正——accuracy 5%/10%/20% 注入率下 0.9205→0.9470 / 0.8770→0.9278 / 0.8064→0.8986；bias −6.8→−3.5 / −10.7→−4.3 / −17.6→−5.3%；分类型恢复率 inflate≈0.97–0.98、zero/negate≈0.95。
+
 ### V1.1.1
 
 采食量校正模型重构 + 个体日增重口径修复：
@@ -186,7 +198,11 @@ Full code audit found and fixed 8 hidden bugs, 3 of which were Critical and caus
 - `test-qc-and-phenotype-age.R`: `ZhenM_run()` doesn't exist (2 tests)
 - `test-regression.R`: legacy baseline removed, national baseline not implemented (2 tests)
 
-Unit tests: 0 FAIL / 108 PASS / 5 SKIP.
+Unit tests: 0 FAIL / 146 PASS / 5 SKIP.
+
+### R CMD check vignette (V1.1.2)
+
+本机环境缺 pandoc，vignette 无法重建；且 vignette 示例使用占位路径 `path/to/raw/data`，执行必报错。`run_package_build_check.R` 在此环境达不到 `Status: OK`（报 vignette 链 1 ERROR + WARNING）；替代校验：`R CMD build --no-build-vignettes` + `R CMD check --no-build-vignettes`，其余检查项通过（non-ASCII/doc-mismatch 为既有遗留）。
 
 ### NAMESPACE cleanup needed
 
