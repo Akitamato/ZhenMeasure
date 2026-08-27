@@ -132,6 +132,8 @@ Phase 1：日级 LMM 兜底校正重构（issue #5，分支 `feat/feed-correctio
 
 泛化复测（FIRE 211 头 / NEDAP 42 头，同基准同种子）：改良 LMM 家族（B/F/G）在三台设备上全部优于无-LMM 对照（C0/A）——Phase 1 修复普适。**F（记录级+叠加LMM）三设备全部稳居前二且 bias 最小（FIRE 20% 仅 +0.7%），是当前证据下的推荐默认组合**。G_cens 平均准确率最高但过补倾向在非扬翔设备显现（bias@20%：FIRE +3.6%、NEDAP +6.7%，小样本放大），接入包内前需保守化（复活量 shrink / 分位数删失界 / 过补信号自动回退 F）。设备排序差异印证互补设计：高频访问（扬翔）A 强、低频（Nedap）日级统计借用强（B 在 NEDAP 20% 反超 G 登顶）。
 
+G_cens 保守化（commit 35ee5ff，脚本 CLI 参数 `Rscript simulation_benchmark.R <DEVICE> <quantile> <shrink>`）：①复活量折扣 shrink=0.7 定版（FIRE 校准 s1.0→0.8→0.7：bias@20% +3.6%→+2.2%→+1.5%，acc 仅损失 ~0.2pp，方向从高估转轻微低估）；②分位数删失界实测不绑定——三设备个体干净速率 95%/99% 分位普遍高于 170 g/min 物理上限，min 后形同虚设，保留为可选参数默认关。三设备定版表现（物理界+s0.7）：bias@20% 扬翔 −1.1%、FIRE +1.5%、NEDAP +4.3%（后者与 B +5.2%/F +4.5% 同档，属 42 头小样本下整个 LMM 家族的天花板而非 G 特有）。**前提性警告：手写 ECM 对干净池:删失行比例高度敏感**（clean_subsample 250k→150k 使 FIRE bias +3.6%↔−3.0%），接入包内必须换成完整似然方法（`lmec`/Vaida & Liu 2009）。文献检索确认两条策略均有直接谱系并记录于 issue #5 评论（Casey 2005 十六准则 / Jiao 2016 MI vs LMM / Fernando et al. 1987 删失混合模型动物育种祖先 / Hughes 1999 MCEM）。
+
 ### V1.1.1
 
 采食量校正模型重构 + 个体日增重口径修复：
