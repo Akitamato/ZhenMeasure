@@ -1,10 +1,21 @@
 # ZhenMeasure news
 
-## Unreleased
+## 1.1.2
 
 ### Added
 - 新增校正机制开关 `use_record_feed_correction` 与 `use_lmm_feed_correction`（默认 TRUE，行为与 V1.1.1 完全一致）。关闭记录级物理纠正后回退「置零」路径；关闭日级 LMM 兜底后仅保留 6kg 日上限校验。用于校正机制消融实验（issue #5）。
-- 新增消融实验脚本 `测试/compare_correction_variants.R`：以 6 行对照矩阵（纯原始 / V1.1.0 / V1.1.1 / 纯 FCR 锚定等）在南沙数据上量化各校正机制的净效果。
+- 新增实验性叠加校正开关 `use_lmm_stacking`（默认 FALSE）：记录级纠正成功后串联互补式 LMM，只补偿「噪声置零类」丢失的克数，已被物理封顶的类型不再入模（避免二次补偿）。注入式仿真基准三设备验证：变体 F 全面优于纯记录级纠正且 bias 最小。
+- 新增注入式仿真基准脚本 `测试/simulation_benchmark.R`（复刻 Jiao et al. 2016 设计，支持 YANGXIANG/FIRE/NEDAP），作为校正机制改动的裁判台。
+- 新增消融实验脚本 `测试/compare_correction_variants.R`：以 6 行对照矩阵量化各校正机制的净效果。
+
+## 1.1.1
+
+### Changed
+- **采食量校正模型重构**：被 flag 的采食记录不再「置零排除」，改为按 flag 类型物理封顶/归零（新增 `.correct_feed_records()`）——噪声类（负值/极端速度小采食/长时间零速）置 0，`speed_too_fast` 封顶到 `170×时长/60`，`feed_too_high` 封顶到个体 P99（用干净记录计算）。南沙数据 `ADFI_g` 1745→1995.5，校正量 -442→-139.5 g/天。
+- **日级 LMM 校正改为兜底**：记录级纠正成功时跳过 `normal_feed_sum + β×flag` 校正（避免二次校正），仅保留 6kg 日上限校验 `flag_daily_feed_over_limit`；记录级纠正失败时才走原日级 LMM。
+
+### Fixed
+- **个体日增重口径修复**：`adg_g` 从 `diff(daily_weight_g)`（未除以天数）改为 `diff(daily_weight_g)/as.numeric(diff(record_date))`，单位 g/天。
 
 ## 1.1.0
 

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **ZhenMeasure** is an R package for pig feeding station data standardization, quality control (QC), and phenotype calculation. It processes data from three commercial device types: YANGXIANG, Nedap, and FIRE. The package was formerly named AFEStat (renamed at V0.2.4).
 
-The active R package source is at `V项目测试与开发/项目本体/ZhenMeasure/`.
+The active R package source is at `项目本体/ZhenMeasure/`. Note: the git repository root is this directory itself, so all paths below are already relative to it. `开发方案/` (development plans, debug reports) is gitignored — local-only, absent from fresh clones.
 
 ## Commands
 
@@ -14,29 +14,30 @@ All commands assume the repo root as working directory.
 
 **Install locally:**
 ```r
-install.packages("V项目测试与开发/项目本体/ZhenMeasure", repos = NULL, type = "source")
+install.packages("项目本体/ZhenMeasure", repos = NULL, type = "source")
 ```
 
 **Run R CMD build + check (primary validation):**
 ```r
-Rscript V项目测试与开发/项目本体/ZhenMeasure/inst/scripts/run_package_build_check.R
+Rscript 项目本体/ZhenMeasure/inst/scripts/run_package_build_check.R
 ```
-Success requires `Status: OK` in `build-output/ZhenMeasure.Rcheck/00check.log`.
+Success requires `Status: OK` in `项目本体/ZhenMeasure/build-output/ZhenMeasure.Rcheck/00check.log`. The script is cwd-independent (it locates itself), so it can be run from anywhere.
 
 **Run unit tests:**
 ```r
-devtools::test(pkg = "V项目测试与开发/项目本体/ZhenMeasure")
+devtools::test(pkg = "项目本体/ZhenMeasure")
+devtools::test(pkg = "项目本体/ZhenMeasure", filter = "qc")  # single file: test-qc.R
 ```
 
 **Run manual integration tests:**
 ```r
-Rscript V项目测试与开发/测试/ZhenMeasure_quickly_start.R
-Rscript V项目测试与开发/测试/ZhenMeasure_step_by_step_test.R
+Rscript 测试/ZhenMeasure_quickly_start.R
+Rscript 测试/ZhenMeasure_step_by_step_test.R
 ```
 
 **Regenerate documentation (roxygen2):**
 ```r
-devtools::document(pkg = "V项目测试与开发/项目本体/ZhenMeasure")
+devtools::document(pkg = "项目本体/ZhenMeasure")
 ```
 
 ## Architecture
@@ -75,7 +76,7 @@ See `测试/大规模测试/Legacy问题处理/final_legacy_retirement_plan.md` 
 
 ### Naming conventions
 
-- Exported functions: `ZhenM_` prefix (29 total in NAMESPACE)
+- Exported functions: `ZhenM_` prefix (28 total in NAMESPACE; the one exception is `run_zhen_measure`)
 - Internal functions: `.` prefix (various patterns: `.zhenm_`, `.check_`, `.normalize_`, `.map_`, `.init_`, `.identify_`, `.apply_`, `.build_`, `.annotate_`, `.plot_`, `.add_`, `.create_`)
 - Source files: `zhenm_*.R` for modules
 
@@ -90,15 +91,17 @@ See `测试/大规模测试/Legacy问题处理/final_legacy_retirement_plan.md` 
 
 ## Testing
 
-Test files are in `V项目测试与开发/项目本体/ZhenMeasure/tests/testthat/` (testthat edition 3). 11 test files: birth-info, config, data-format, impute, phenotype, plot-outputs, qc, qc-and-phenotype-age, regression, standard-schema, stl-gompertz.
+Test files are in `项目本体/ZhenMeasure/tests/testthat/` (testthat edition 3). 11 test files: birth-info, config, data-format, impute, phenotype, plot-outputs, qc, qc-and-phenotype-age, regression, standard-schema, stl-gompertz.
 
-Manual regression/comparison scripts are in `V项目测试与开发/测试/` (7 scripts: quickly_start, step_by_step, imputation_analysis, lmm_compare, qc_compare, smoke_test, timezone_fix).
+Manual regression/diagnostic scripts are in `测试/`: quickly_start, step_by_step_test, imputation_analysis, lmm_correction_compare, qc_methods_compare, smoke_test, timezone_fix, plus V1.1.1-era ADFI diagnostics (`ZhenMeasure_nansha_test.R`, `compare_adfi.R`, `diagnose_adfi_drop.R`, `diagnose_adfi_low.R`, `verify_lmm_fix.R`) and a `demo/` folder.
 
 ### Comparison with 中农程序
 
-Comparison test scripts are in `V项目测试与开发/测试/与中农程序对比测试相关脚本/` (6 scripts: 00_run_all, 01_run_zhenmeasure, 02_prepare_comparison, 03_run_comparison, 04_generate_report, plus report template).
+Comparison test scripts are in two folders under `测试/`:
+- `与中农程序对比测试相关脚本/` — 6 scripts: 00_run_all, 01_run_zhenmeasure, 02_prepare_comparison, 03_run_comparison, 04_generate_report, plus report template (`COMPARISON_REPORT.md`, plan in `00_对比测试计划.md`)
+- `与中农程序对比测试/` — self-contained variant with its own `data/`, `results/`, and the 中农 Python sources
 
-**中农程序** (China Agricultural University program): Python-based FCR correction tool at `V项目发布/对比方法/中农程序/` (2 scripts: 手动恢复QC.py, 矫正115.py). Uses robust regression (Tukey Biweight) + breed-specific thresholds (YY/LL/DD) + mixed-effects model for feed correction.
+**中农程序** (China Agricultural University program): Python-based FCR correction tool at `测试/与中农程序对比测试/zhongnong_scripts/` (2 scripts: 手动恢复QC.py, 矫正115.py). Uses robust regression (Tukey Biweight) + breed-specific thresholds (YY/LL/DD) + mixed-effects model for feed correction.
 
 **Data format incompatibility**: YANGXIANG data has 10-164 visits/day (high-frequency sampling), while 中农程序 expects 1-10 visits/day. Daily feed totals (3-10 kg) exceed 中农程序's 6 kg threshold. Direct numerical comparison is not possible on YANGXIANG data.
 
