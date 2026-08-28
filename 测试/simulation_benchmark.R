@@ -44,23 +44,28 @@ data_path   <- file.path(dev_base, "原始数据")
 format_path <- list.files(file.path(dev_base, "附加信息"),
                           pattern = "[.]json$", full.names = TRUE)[1]
 
-# G_cens 保守化参数（CLI 可选覆盖）：Rscript sim.R <DEVICE> <quantile> <shrink>
+# G_cens 保守化参数（CLI 可选覆盖）：Rscript sim.R <DEVICE> <quantile> <shrink> <method>
 #   quantile：分位数删失界（0~1，传入 0 表示退回纯物理界）；shrink：复活量折扣
+#   method：G 实现——"ml"（右删失完整似然，Phase 2.5，推荐）/"ecm"（旧手写 EM PoC）
 G_QUANTILE <- if (length(dev_args) >= 2 && is.finite(as.numeric(dev_args[2]))) {
   as.numeric(dev_args[2])
 } else 0
 G_SHRINK <- if (length(dev_args) >= 3 && is.finite(as.numeric(dev_args[3]))) {
   as.numeric(dev_args[3])
 } else 0.7
+G_METHOD <- if (length(dev_args) >= 4) dev_args[4] else "ml"
+if (!G_METHOD %in% c("ml", "ecm")) {
+  stop("未知 G 实现：", G_METHOD, "（可选 ml / ecm）", call. = FALSE)
+}
 settings_tag <- if (length(dev_args) >= 2) {
-  sprintf("_q%s_s%.2f", G_QUANTILE, G_SHRINK)
-} else ""
+  sprintf("_q%s_s%.2f_%s", G_QUANTILE, G_SHRINK, G_METHOD)
+} else "_ml"
 
 out_dir <- file.path(project_root, "测试/demo/demo_output", device_dirs[[DEVICE]],
                      sprintf("injection_benchmark_%s_%s%s", tolower(DEVICE),
                              format(Sys.time(), "%Y%m%d_%H%M%S"), settings_tag))
-cat(sprintf(">>> 设备=%s | G 保守化：quantile=%s shrink=%.2f\n",
-            DEVICE,
+cat(sprintf(">>> 设备=%s | G 实现=%s 保守化：quantile=%s shrink=%.2f\n",
+            DEVICE, G_METHOD,
             if (G_QUANTILE > 0) as.character(G_QUANTILE) else "物理界(无分位)",
             G_SHRINK))
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
@@ -298,6 +303,177 @@ eval_metrics <- function(daily_est, truth, affected = NULL) {
   daily[]
 }
 
+# ============================================================
+# Phase 2.5 替代方案：右删失完整似然（issue #5 步骤2 完善）
+# ECM 伪观测入模对「干净池:删失行」比例敏感。完整似然把删失记录
+# 当作一段上尾概率质量（Φ((logU−μ)/σ)），对随机效应做 Gauss-Hermite
+# 数值积分得到边缘对数似然，直接最大化——无伪观测、无子采样、
+# 无池比例依赖。复活阶段用截尾条件期望 μ−σφ(α)/Φ(α)，α=(logU−μ)/σ。
+# 依赖：仅 base R（pollatz 节点由 eigen 生成，polyroot 不需要）。
+# ============================================================
+.gh_nodes <- function(n = 20) {
+  # Golub-Welsch: H_n 根 = 三对角 J (副对角 sqrt(k/2)) 的对称特征值
+  J <- matrix(0, n, n)
+  for (k in 1:(n - 1)) J[k, k + 1] <- J[k + 1, k] <- sqrt(k / 2)
+  eig <- eigen(J, symmetric = TRUE)
+  x <- eig$values
+  w <- sqrt(pi) * eig$vectors[1, ]^2
+  ord <- order(x)
+  list(x = x[ord], w = w[ord])
+}
+
+.em_censored_daily_ml <- function(dt_qc, speed_max = 170, shrink = 0.7,
+                                  gh_n = 20, method = "BFGS") {
+  noise_flags <- c("flag_feed_negative", "flag_speed_extreme_low_feed",
+                   "flag_speed_zero_long_duration")
+  has_noise <- Reduce(`|`, lapply(noise_flags, function(f)
+    if (f %in% names(dt_qc)) dt_qc[[f]] %in% TRUE else rep(FALSE, nrow(dt_qc))))
+  if (sum(has_noise) == 0) return(NULL)
+
+  dur_name <- if ("duration_sec" %in% names(dt_qc)) "duration_sec"
+              else if ("Duration" %in% names(dt_qc)) "Duration" else NULL
+  if (is.null(dur_name) || !"animal_id" %in% names(dt_qc)) return(NULL)
+  dur_v <- suppressWarnings(as.numeric(dt_qc[[dur_name]]))
+  id_v  <- dt_qc$animal_id
+  feed_v <- suppressWarnings(as.numeric(dt_qc$feed_g))
+
+  # A 路径打底：被噪声置零的记录其「复活底线」= 物理纠正后的值（有的被置0）
+  corr <- .correct_feed_records(data.table::copy(dt_qc))
+  base_feed <- corr$feed_corrected
+
+  # 建模池：非噪声记录（干净）为观测；噪声记录为右删失
+  is_clean <- !has_noise & !is.na(feed_v) & feed_v > 0 &
+              !is.na(dur_v) & dur_v > 0
+  if (sum(is_clean) < 30) return(NULL)
+
+  # 上界 U：物理界（用量删失界；时长缺失用个体中位时长）
+  med_dur <- tapply(dur_v[is_clean], id_v[is_clean], median, na.rm = TRUE)
+  eff_dur <- dur_v[has_noise]
+  miss <- is.na(eff_dur) | eff_dur <= 0
+  if (any(miss)) {
+    ts <- as.numeric(med_dur)[match(id_v[has_noise][miss], names(med_dur))]
+    eff_dur[miss] <- ts
+  }
+  gmed_dur <- stats::median(dur_v[is_clean], na.rm = TRUE)
+  eff_dur[is.na(eff_dur) | eff_dur <= 0] <- gmed_dur
+  u_phys <- pmax(speed_max * eff_dur / 60, 1)
+
+  id_clean <- id_v[is_clean]
+  x_clean  <- log(dur_v[is_clean])
+  y_clean  <- log(feed_v[is_clean])
+  id_cens <- id_v[has_noise]
+  x_cens  <- log(eff_dur)
+  u_cens  <- log(u_phys)
+
+  # 个体列表（干净或删失出现过的）
+  animals <- unique(c(id_clean, id_cens))
+  n_a <- length(animals)
+  a_clean <- match(id_clean, animals)
+  a_cens  <- match(id_cens, animals)
+
+  gh <- .gh_nodes(gh_n)
+  ghx <- gh$x; ghw <- gh$w
+  gh_scale <- sqrt(2)  # 若节点总缩放不一致可调；Golub-Welsch sqrt(k/2) 适配 std normal
+
+  # 保持组索引 1..n_a 完整且连续：用 factor(levels=1:n_a)
+  f_a_clean <- factor(a_clean, levels = seq_len(n_a))
+  f_a_cens  <- factor(a_cens,  levels = seq_len(n_a))
+  grp_clean <- split(seq_along(y_clean), f_a_clean)
+  grp_cens  <- split(seq_along(u_cens),  f_a_cens)
+
+  # 初始化（用干净记录 OLS 作固定效应初值）
+  fit0 <- stats::lm(y_clean ~ x_clean)
+  b0_init <- fit0$coefficients[1]
+  b1_init <- fit0$coefficients[2]
+  sig_init <- stats::sigma(fit0)
+  sig_b_init <- 0.3
+  if (!is.finite(sig_init) || sig_init <= 0) sig_init <- 0.3
+
+  # 边缘对数似然：对个体 i 积分，
+  # 贡献 = ∫ [Π_clean φ(y_j|b) · Π_cens Φ((u_k−b)/σ)] φ(b) db
+  # 全向量化：把「记录 × GH 节点」的对数贡献矩阵按动物 rowsum 汇总，
+  # 一次性算完所有动物的 GH 积分（去掉逐动物 R 循环，适配大规模数据）。
+  neg_ll <- function(par) {
+    b0 <- par[1]; b1 <- par[2]; lsigma <- par[3]; lsigma_b <- par[4]
+    sig <- exp(lsigma); sig_b <- exp(lsigma_b)
+    if (sig <= 0 || sig_b <= 0) return(1e10)
+    b_nodes <- b0 + gh_scale * sig_b * ghx   # 长度 gh_n，含固定效应与随机效应
+    # 干净记录对数密度：n_clean × gh_n
+    if (length(y_clean)) {
+      mu_c <- outer(b1 * x_clean, b_nodes, "+")
+      lc <- -0.5 * log(2 * pi) - lsigma - 0.5 * ((y_clean - mu_c) / sig)^2
+    } else lc <- matrix(0, 0, length(ghx))
+    # 删失记录对数上尾概率：n_cens × gh_n
+    if (length(x_cens)) {
+      mu_s <- outer(b1 * x_cens, b_nodes, "+")
+      ls <- stats::pnorm((u_cens - mu_s) / sig, log.p = TRUE)
+    } else ls <- matrix(0, 0, length(ghx))
+    # 按动物 rowsum → n_a × gh_n（animals 每个至少 clean 或 cens，无空动物）
+    Rg <- rowsum(rbind(lc, ls), c(a_clean, a_cens), reorder = FALSE)
+    # 加 GH 权重项（依赖节点 k，逐列）
+    Rg <- sweep(Rg, 2, -0.5 * ghx^2 - log(2 * pi) / 2 - log(sig_b), "+")
+    # 每动物 log-sum-exp（ghw 加权）
+    m <- apply(Rg, 1, max)
+    ex <- sweep(Rg, 1, m, "-")
+    ln <- m + log(as.vector(ghw %*% t(exp(ex))))
+    -sum(ln)
+  }
+
+  # 初始优化并迭代
+  par0 <- c(b0_init, b1_init, log(sig_init), log(sig_b_init))
+  fit <- tryCatch(optim(par0, neg_ll, method = method, control = list(maxit = 300)),
+                  error = function(e) NULL)
+  if (is.null(fit)) return(NULL)
+
+  # 复活：每个删失行用截尾条件期望 μ−σφ(α)/Φ(α)（α=(u−μ)/σ，μ=b0+b1*x+b_i）
+  # 计算 b_i：用后验随机效应（在拟合参数下，个体 i 的 BLUP 近似）
+  # 简化：用边缘期望近似复活。给定 b 的分布积分下的条件期望更准，
+  # 但这里先做一阶近似：用「干净观测+删失上界」的个体预测合成。
+  # 更稳妥做法：对删失行复活量用下面的估计
+  h <- fit$par
+  b0 <- h[1]; b1 <- h[2]; sig <- exp(h[3]); sig_b <- exp(h[4])
+
+  # 复活值：对每个删失行，
+  # E[log feed | log feed ≤ u, model] = μ−σφ(α)/Φ(α), α=(u−μ)/σ
+  # μ = b0 + b1*x + b_animal；b_i 经 GH 积分（对个体的 b 做贝叶斯平均）。
+  # 对 c 个体 (a_i) 的条件期望，再对 GH 节点加权平均 → 每删失行复活量。
+  feed_resurrect <- base_feed   # 打底（含物理纠正值、噪声置零为空）
+  noise_row <- which(has_noise)  # 删失行在 dt_qc 中的全局行号
+  # 对每个动物 ai，其删失行的 GH 节点索引与「该组删失行数」结合：
+  # exp_b 应为 length(ghx) × length(si) 的矩阵，z_est 才是一个删失行一个值
+  for (ai in seq_len(n_a)) {
+    si <- grp_cens[[ai]]
+    if (is.null(si) || !length(si)) next
+    exp_b <- matrix(0, nrow = length(ghx), ncol = length(si))
+    for (k in seq_along(ghx)) {
+      b <- gh_scale * sig_b * ghx[k]
+      mu_s <- b0 + b1 * x_cens[si] + b
+      alpha <- (u_cens[si] - mu_s) / sig
+      # 条件期望 E[z | z≤u]（右删失截尾）
+      exp_b[k, ] <- mu_s - sig * stats::dnorm(alpha) / pmax(stats::pnorm(alpha), 1e-12)
+    }
+    # 对 GH 节点加权平均（逐删失行）
+    w_norm <- ghw / sum(ghw)
+    z_est <- as.numeric(t(w_norm) %*% exp_b)  # 每个删失行的估计 log feed
+    feed_resurrect[noise_row[si]] <- shrink * pmin(pmax(exp(z_est), 1e-3), u_phys[si])
+  }
+
+  # 按 Step5 日规则聚合
+  oor <- if ("flag_feed_out_of_range" %in% names(dt_qc)) {
+    dt_qc$flag_feed_out_of_range %in% TRUE
+  } else rep(FALSE, nrow(dt_qc))
+  agg <- data.table::data.table(animal_id = id_v, record_date = dt_qc$record_date,
+                                f = feed_resurrect, oor = oor)
+  daily <- agg[, .(
+    daily_feed_g = if (any(oor)) NA_real_ else {
+      vv <- f[f > 0 & !is.na(f)]
+      if (length(vv) == 0) NA_real_ else sum(vv)
+    }
+  ), by = .(animal_id, record_date)]
+  daily[!is.na(daily_feed_g) & daily_feed_g > 6000, daily_feed_g := NA_real_]
+  list(daily = daily, fit = list(b0 = b0, b1 = b1, sig = sig, sig_b = sig_b, opt = fit$value, converged = fit$convergence))
+}
+
 results <- list(); type_rows <- list()
 for (rate in INJECTION_RATES) {
   cat(sprintf(">>> 注入率 %.0f%% ...\n", rate * 100))
@@ -330,30 +506,40 @@ for (rate in INJECTION_RATES) {
               "E_污染不校正", met_e$acc, met_e$bias, met_e$coverage))
   rm(daily_raw_e); invisible(gc(verbose = FALSE))
 
-  # G_cens：Phase 2 PoC —— A 路径打底 + 右删失 Tobit EM 复活噪声置零记录
-  cat("    G_cens: 拟合删失混合模型（EM）...\n")
+  # G_cens：A 路径打底 + 右删失 Tobit（完整似然 ml / 手写 ECM PoC）复活噪声置零记录
+  g_label <- if (G_METHOD == "ml") "G_A路径+删失ML复活" else "G_A路径+删失EM复活"
+  g_key   <- if (G_METHOD == "ml") "G_ml" else "G_cens"
+  cat(sprintf("    %s: 拟合删失混合模型（%s）...\n", g_key,
+              if (G_METHOD == "ml") "完整似然" else "EM"))
   daily_raw_g <- tryCatch(
-    .em_censored_daily(dt_qc, SET_SEED + round(rate * 1000),
-                       quantile_bound = if (G_QUANTILE > 0) G_QUANTILE else NULL,
-                       shrink = G_SHRINK),
+    if (G_METHOD == "ml") {
+      .em_censored_daily_ml(dt_qc, shrink = G_SHRINK, speed_max = 170)
+    } else {
+      .em_censored_daily(dt_qc, SET_SEED + round(rate * 1000),
+                         quantile_bound = if (G_QUANTILE > 0) G_QUANTILE else NULL,
+                         shrink = G_SHRINK)
+    },
     error = function(e) {
-      message(sprintf("G_cens failed: %s", conditionMessage(e)))
+      message(sprintf("%s failed: %s", g_key, conditionMessage(e)))
       NULL
     })
-  if (!is.null(daily_raw_g)) {
+  # 统一返回：ml 版返回 list(daily=..., fit=...)，这里解包
+  if (!is.null(daily_raw_g) && is.list(daily_raw_g) && "daily" %in% names(daily_raw_g)) {
+    daily_raw_g <- daily_raw_g$daily
+  }
+  if (!is.null(daily_raw_g) && is.data.frame(daily_raw_g)) {
     met_g <- eval_metrics(daily_raw_g, truth_daily, affected)
     results[[length(results) + 1]] <- data.table(
-      rate = rate, variant = "G_cens", label = "G_A路径+删失EM复活",
+      rate = rate, variant = g_key, label = g_label,
       accuracy = met_g$acc, bias = met_g$bias, coverage = met_g$coverage,
       adfi_r = met_g$r, adfi_rho = met_g$rho,
       na_days = sum(is.na(daily_raw_g$daily_feed_g)))
     if (!is.null(met_g$by_type)) {
-      met_g$by_type[, `:=`(rate = rate, variant = "G_cens")]
+      met_g$by_type[, `:=`(rate = rate, variant = g_key)]
       type_rows[[length(type_rows) + 1]] <- met_g$by_type
     }
     cat(sprintf("    %-6s %-24s acc=%.3f bias=%+.3f cover=%.3f\n",
-                "G_cens", "G_A路径+删失EM复活", met_g$acc, met_g$bias,
-                met_g$coverage))
+                g_key, g_label, met_g$acc, met_g$bias, met_g$coverage))
     rm(daily_raw_g); invisible(gc(verbose = FALSE))
   }
 
