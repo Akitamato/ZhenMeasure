@@ -49,3 +49,6 @@ inst/doc/
 # Old R package builds
 ZhenMeasure_*.tar.gz
 ZhenMeasure_V*.zip
+
+# 本地开发文档（保留本地，不推远程）
+开发方案/
