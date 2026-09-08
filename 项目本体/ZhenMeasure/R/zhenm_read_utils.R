@@ -221,14 +221,9 @@ ZhenM_attach_measurement_day <- function(dt) {
 
   x_char <- trimws(as.character(x))
 
-  # Handle Excel numeric dates
-  if (all(grepl("^[0-9]+\\.?[0-9]*$", x_char[!is.na(x_char)]))) {
-    numeric_dates <- as.numeric(x_char)
-    parsed <- as.POSIXct((numeric_dates - 25569) * 86400, origin = "1970-01-01", tz = "UTC")
-    return(parsed)
-  }
-
-  # Try lubridate with multiple formats
+  # 先按文本格式解析（含紧凑 Ymd 如 "20240101"）。
+  # issue #9：纯数字判定必须放在解析尝试之后——放在前面会把紧凑日期
+  # 误判成 Excel 序列号（20240101 → 约 57355 年的荒谬日期，且静默无告警）。
   parsed <- suppressWarnings(
     lubridate::parse_date_time(
       x_char,
@@ -239,7 +234,22 @@ ZhenM_attach_measurement_day <- function(dt) {
     )
   )
 
-  # If still NA, try as.POSIXct
+  # 解析失败的元素再回退 Excel 序列号：仅当数值落在合理区间
+  # [20000, 60000]（约 1954-2064）才按序列号解读；"20240101" 远超上界
+  # 不会被误读。与 ZhenM_safe_to_idate 的「先解析后回退」口径对齐。
+  na_pos <- which(is.na(parsed) & !is.na(x_char))
+  if (length(na_pos) > 0) {
+    numeric_vals <- suppressWarnings(as.numeric(x_char[na_pos]))
+    is_serial <- !is.na(numeric_vals) & numeric_vals >= 20000 & numeric_vals <= 60000
+    if (any(is_serial)) {
+      tgt <- na_pos[is_serial]
+      parsed[tgt] <- as.POSIXct(
+        (numeric_vals[is_serial] - 25569) * 86400, origin = "1970-01-01", tz = "UTC"
+      )
+    }
+  }
+
+  # If still all NA, try as.POSIXct
   if (all(is.na(parsed))) {
     parsed <- tryCatch({
       as.POSIXct(x_char, tz = "UTC")
