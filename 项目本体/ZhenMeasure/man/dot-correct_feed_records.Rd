@@ -4,10 +4,15 @@
 \alias{.correct_feed_records}
 \title{Record-level feed intake correction by flag type (physics caps)}
 \usage{
-.correct_feed_records(dt)
+.correct_feed_records(dt, speed_max = 170)
 }
 \arguments{
 \item{dt}{Standard-record-level data.table with feed QC flags}
+
+\item{speed_max}{Physiological feeding-rate cap in g/min, used to cap
+speed_too_fast records (feed ≤ speed_max × duration/60). Defaults to 170;
+callers should thread `ns_cfg$speed_max` so the record-level cap and the
+LMM add-back cap (issue #12) stay on the same config value.}
 }
 \value{
 list(success, feed_corrected). feed_corrected is a numeric vector

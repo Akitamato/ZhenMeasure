@@ -123,7 +123,8 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
   # 纠正失败或被配置关闭时回退为现有「置零 + 日级 LMM 校正」路径。
   feed_correction_success <- FALSE
   if (!is.null(feed_col) && use_record_fix) {
-    corrected <- .correct_feed_records(dt)
+    corrected <- .correct_feed_records(
+      dt, speed_max = if (!is.null(ns_cfg$speed_max)) as.numeric(ns_cfg$speed_max) else 170)
     feed_correction_success <- corrected$success
     if (feed_correction_success) {
       dt[, feed_filtered := corrected$feed_corrected]
@@ -262,10 +263,14 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
 #' most some physiological upper bound.
 #'
 #' @param dt Standard-record-level data.table with feed QC flags
+#' @param speed_max Physiological feeding-rate cap in g/min, used to cap
+#'   speed_too_fast records (feed ≤ speed_max × duration/60). Defaults to 170;
+#'   callers should thread `ns_cfg$speed_max` so the record-level cap and the
+#'   LMM add-back cap (issue #12) stay on the same config value.
 #' @return list(success, feed_corrected). feed_corrected is a numeric vector
 #'   aligned with dt rows.
 #' @keywords internal
-.correct_feed_records <- function(dt) {
+.correct_feed_records <- function(dt, speed_max = 170) {
   dt <- data.table::copy(dt)
 
   feed_col <- if ("feed_g" %in% names(dt)) "feed_g"
@@ -280,8 +285,8 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
   # 初始保留原采食量（被 flag 记录不置零，只对「明显离谱」的封顶/归零）
   dt[, feed_corrected := as.numeric(get(feed_col))]
 
-  # speed_max 与 zhenm_config_defaults.R:41 保持一致（170 g/min）
-  speed_max <- 170
+  # speed_max 由调用方从 config 传入（issue #12），缺省 170 与
+  # zhenm_config_defaults.R 的 speed_max 保持一致
 
   # 1) 纯噪声 → 0
   if ("flag_feed_negative" %in% names(dt)) {

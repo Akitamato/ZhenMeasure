@@ -277,3 +277,39 @@ test_that("Stack mode: complementary LMM adds back only noise-zeroed losses", {
     res_a[animal_id == "A001" & record_date %in% clean_dates, daily_feed_g]
   )
 })
+
+test_that("record-level speed cap threads speed_max from config (issue #12)", {
+  skip_if_not_installed("data.table")
+
+  # 同一份数据：60 秒内 5000g 的 speed_too_fast 记录，
+  # 封顶值 = speed_max × 60 / 60 = speed_max（g）
+  mk <- function() {
+    data.table::data.table(
+      animal_id = rep("A001", 10),
+      record_date = rep(seq.Date(as.Date("2024-01-01"), by = "day", length.out = 5), each = 2),
+      feed_g = c(rep(300, 8), 5000, 400),
+      weight_g = 30000 + seq(0, 90, length.out = 10) * 100,
+      duration_sec = c(rep(300, 8), 60, 300),
+      is_outlier_feed = c(rep(FALSE, 8), TRUE, FALSE),
+      flag_speed_too_fast = c(rep(FALSE, 8), TRUE, FALSE),
+      is_outlier_wt = FALSE,
+      device_type = "YANGXIANG",
+      age_day = rep(1:5, each = 2),
+      measurement_day = rep(1:5, each = 2),
+      source_file = "t.csv",
+      daily_feed_g = NA_real_
+    )
+  }
+
+  # 默认 config：speed_max=170 → 该记录封顶 170g；当天干净记录 400g → 日和 570g
+  r_def <- ZhenM_standard_to_daily_filtered(mk())
+  d5_def <- r_def[record_date == as.Date("2024-01-05"), daily_feed_g]
+
+  # 自定义 speed_max=300 → 封顶 300g → 日和 700g
+  r_cfg <- ZhenM_standard_to_daily_filtered(
+    mk(), ZhenM_merge_config(list(national_standard = list(speed_max = 300))))
+  d5_cfg <- r_cfg[record_date == as.Date("2024-01-05"), daily_feed_g]
+
+  expect_equal(d5_def, 170 + 400)
+  expect_equal(d5_cfg, 300 + 400)
+})
