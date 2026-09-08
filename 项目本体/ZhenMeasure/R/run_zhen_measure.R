@@ -4,7 +4,7 @@
 #'
 #' @param data_path Path to raw data directory
 #' @param data_type Data source type: "YANGXIANG", "NEDAP", or "FIRE"
-#' @param format_path Path to Data_format.txt file
+#' @param format_path Path to Data_format.json file (only .json is supported)
 #' @param birth_info_path Path to birth info file (for NEDAP/FIRE)
 #' @param qc_method QC method: "national_standard" (the only supported method since V1.0.0)
 #' @param phenotype_method Phenotype calculation method: "standard_fcr", "report", "monitor", "research"

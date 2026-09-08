@@ -9,7 +9,7 @@ ZhenM_convert_nedap_to_standard(data_path, format_path, birth_info_path = NULL)
 \arguments{
 \item{data_path}{Path to NEDAP raw data directory}
 
-\item{format_path}{Path to Data_format.txt or .json file}
+\item{format_path}{Path to Data_format.json file}
 
 \item{birth_info_path}{Path to birth info Excel/CSV file (optional)}
 }

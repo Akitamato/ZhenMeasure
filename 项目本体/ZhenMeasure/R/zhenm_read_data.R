@@ -5,7 +5,7 @@
 #'
 #' @param data_path Path to raw data directory
 #' @param data_type Data source type: "YANGXIANG", "NEDAP", or "FIRE"
-#' @param format_path Path to Data_format.txt file
+#' @param format_path Path to Data_format.json file (only .json is supported)
 #' @param birth_info_path Path to birth info file (required for NEDAP/FIRE, optional for YANGXIANG)
 #' @return A data.table in standard format with columns:
 #'   ID, AGE, DFI, Visit_time, End_time, Duration, Feed_intake, Weight, Location
@@ -13,10 +13,10 @@
 #' @examples
 #' \dontrun{
 #' # Read YANGXIANG data
-#' data <- ZhenM_read_data("path/to/data", "YANGXIANG", "path/to/format.txt")
+#' data <- ZhenM_read_data("path/to/data", "YANGXIANG", "path/to/format.json")
 #'
 #' # Read NEDAP data with birth info
-#' data <- ZhenM_read_data("path/to/data", "NEDAP", "path/to/format.txt",
+#' data <- ZhenM_read_data("path/to/data", "NEDAP", "path/to/format.json",
 #'                       birth_info_path = "path/to/birth.xlsx")
 #' }
 ZhenM_read_data <- function(data_path, data_type, format_path, birth_info_path = NULL) {
@@ -147,7 +147,7 @@ ZhenM_data_summary <- function(standard_data) {
 #' Reads YANGXIANG raw data and converts it to ZhenMeasure standard format.
 #'
 #' @param data_path Path to YANGXIANG raw data directory (containing xlsx files)
-#' @param format_path Path to Data_format.txt file
+#' @param format_path Path to Data_format.json file (only .json is supported)
 #' @return A data.table in standard format
 #' @export
 ZhenM_convert_yangxiang_to_standard <- function(data_path, format_path) {
@@ -350,7 +350,7 @@ ZhenM_convert_yangxiang_to_standard <- function(data_path, format_path) {
 #' NEDAP data supports csv/txt/xls/xlsx files in nested folders.
 #'
 #' @param data_path Path to NEDAP raw data directory
-#' @param format_path Path to Data_format.txt or .json file
+#' @param format_path Path to Data_format.json file
 #' @param birth_info_path Path to birth info Excel/CSV file (optional)
 #' @return A data.table in standard format
 #' @export
@@ -381,7 +381,7 @@ ZhenM_convert_nedap_to_standard <- function(data_path, format_path, birth_info_p
 #' FIRE data supports csv/txt/xls/xlsx files in nested folders.
 #'
 #' @param data_path Path to FIRE raw data directory
-#' @param format_path Path to Data_format.txt or .json file
+#' @param format_path Path to Data_format.json file
 #' @param birth_info_path Path to birth info Excel/CSV file (optional)
 #' @return A data.table in standard format
 #' @export

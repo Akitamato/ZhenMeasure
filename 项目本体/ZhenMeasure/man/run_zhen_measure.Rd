@@ -28,7 +28,7 @@ run_zhen_measure(
 
 \item{data_type}{Data source type: "YANGXIANG", "NEDAP", or "FIRE"}
 
-\item{format_path}{Path to Data_format.txt file}
+\item{format_path}{Path to Data_format.json file (only .json is supported)}
 
 \item{birth_info_path}{Path to birth info file (for NEDAP/FIRE)}
 

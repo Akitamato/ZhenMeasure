@@ -9,7 +9,7 @@ ZhenM_convert_yangxiang_to_standard(data_path, format_path)
 \arguments{
 \item{data_path}{Path to YANGXIANG raw data directory (containing xlsx files)}
 
-\item{format_path}{Path to Data_format.txt file}
+\item{format_path}{Path to Data_format.json file (only .json is supported)}
 }
 \value{
 A data.table in standard format

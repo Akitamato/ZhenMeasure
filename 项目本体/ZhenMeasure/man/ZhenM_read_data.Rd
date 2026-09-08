@@ -11,7 +11,7 @@ ZhenM_read_data(data_path, data_type, format_path, birth_info_path = NULL)
 
 \item{data_type}{Data source type: "YANGXIANG", "NEDAP", or "FIRE"}
 
-\item{format_path}{Path to Data_format.txt file}
+\item{format_path}{Path to Data_format.json file (only .json is supported)}
 
 \item{birth_info_path}{Path to birth info file (required for NEDAP/FIRE, optional for YANGXIANG)}
 }
@@ -26,10 +26,10 @@ converts it to ZhenMeasure standard format.
 \examples{
 \dontrun{
 # Read YANGXIANG data
-data <- ZhenM_read_data("path/to/data", "YANGXIANG", "path/to/format.txt")
+data <- ZhenM_read_data("path/to/data", "YANGXIANG", "path/to/format.json")
 
 # Read NEDAP data with birth info
-data <- ZhenM_read_data("path/to/data", "NEDAP", "path/to/format.txt",
+data <- ZhenM_read_data("path/to/data", "NEDAP", "path/to/format.json",
                       birth_info_path = "path/to/birth.xlsx")
 }
 }
