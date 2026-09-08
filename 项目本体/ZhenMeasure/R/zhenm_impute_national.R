@@ -13,6 +13,11 @@
 
   if (!"is_imputed_feed" %in% names(dt)) dt[, is_imputed_feed := FALSE]
 
+  # 统一排序（issue #8）：与 .impute_weight_national 同因——idx 取的是
+  # 原始行序，而 sub 经 setorder 后按日期序计算，乱序输入会把插补值/
+  # 标记写错行。dt 已是副本，原地排序安全。
+  data.table::setorder(dt, animal_id, record_date)
+
   ids <- unique(dt$animal_id)
 
   for (id in ids) {
@@ -51,15 +56,17 @@
       sub_out <- .extrapolate_feed_with_fcr_v2(sub, config)
       
       # 严格保护原有数值：仅更新之前为 NA 的位置
-      # 为确保 sub_out 的列名与 dt 匹配，我们需要针对性地更新
-      cols_to_update <- names(sub_out)
+      # 只回填输出契约列（issue #8）：sub_out 携带的 cum_feed/weight_kg/
+      # pred_* 是拟合中间列，原实现把整表列名写回 dt 会污染输出 schema
+      cols_to_update <- intersect(c("daily_feed_g", "is_imputed_feed"), names(sub_out))
       
       # 识别原本就是 NA 的行（在当前个体 sub 中的索引）
       orig_na_in_sub <- which(is.na(sub$daily_feed_g))
       
       if (length(orig_na_in_sub) > 0) {
-        # 只取 sub_out 中原本是 NA 的那些行
-        sub_to_apply <- sub_out[orig_na_in_sub]
+        # 只取 sub_out 中原本是 NA 的那些行，并同步只保留契约列
+        # （多列 := 按位置配对，RHS 列数必须与 cols_to_update 一致）
+        sub_to_apply <- sub_out[orig_na_in_sub, ..cols_to_update]
         # 更新到原 dt 对应的全局索引位置
         dt[idx[orig_na_in_sub], (cols_to_update) := sub_to_apply]
       }

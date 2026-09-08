@@ -51,6 +51,12 @@ ZhenM_impute_feed <- function(daily_records, impute_method = "national_standard"
 .impute_weight_national <- function(daily_records, cfg) {
   dt <- data.table::as.data.table(data.table::copy(daily_records))
 
+  # 统一排序（issue #8）：下面按「日期序」算出的插补值要写回同一批行，
+  # 若输入未按 animal_id+record_date 排序，idx（原始行序）与日期序结果
+  # 会错位，插补值被静默写到错误的日期上。dt 已是副本，原地排序不影响
+  # 调用方；返回表因此按个体+日期有序（下游均按个体分组，无行序依赖）。
+  data.table::setorder(dt, animal_id, record_date)
+
   if (!"is_imputed_wt" %in% names(dt)) dt[, is_imputed_wt := FALSE]
 
   ids <- unique(dt$animal_id)
