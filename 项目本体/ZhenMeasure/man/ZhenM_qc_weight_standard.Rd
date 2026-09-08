@@ -26,4 +26,11 @@ QC'd data with flags (is_outlier_wt)
 \description{
 Perform weight quality control on standard records (standard_data) and flag abnormal records.
 }
+\details{
+单轮 RLM 拟合 + 双阈值判定（issue #14 还原原始设计）：
+\itemize{
+  \item 记录级：RLM 权重 <= \code{weight_threshold}（默认 0.25）的单条记录判异常（\code{flag_weight_low}）；
+  \item 日级：当日有效记录数 >= 2 且全部记录的 RLM 权重 < \code{daily_weight_threshold}（默认 0.90）时整日判异常（\code{flag_daily_weight_low}）；单记录天不参与日级共识。
+}
+}
 \keyword{internal}

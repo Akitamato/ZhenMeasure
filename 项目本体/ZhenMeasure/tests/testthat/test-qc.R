@@ -360,3 +360,87 @@ test_that("LMM compensation sign guard skips positive beta (issue #13)", {
   # 全程无静默 NA/负值（下限护栏 + 符号守卫共同保证）
   expect_true(all(is.finite(res$daily_feed_g)))
 })
+
+test_that("day-level consensus rule flags systematically-off days (issue #14)", {
+  skip_if_not_installed("data.table")
+
+  set.seed(20260903)
+  days <- 15
+  base_w <- seq(50000, 105000, length.out = days)
+  rec_list <- list()
+  for (d in 1:days) {
+    rec_list[[length(rec_list) + 1]] <- data.table::data.table(
+      animal_id = "A001",
+      record_date = as.Date("2024-01-01") + d - 1,
+      weight_g = round(base_w[d] + c(150, -120)),   # 每天 2 条记录
+      device_type = "YANGXIANG"
+    )
+  }
+  dt <- data.table::rbindlist(rec_list)
+  # 第 8 天：两条记录整体 +5kg（天级系统偏移，Huber 权重双双 < 0.9）
+  dt[record_date == as.Date("2024-01-08"), weight_g := weight_g + 5000]
+
+  cfg <- ZhenM_merge_config(list(national_standard = list(test_weight_range = c(60, 100))))
+  r <- ZhenM_qc_weight_standard(dt, "national_standard", cfg)
+
+  # 共识天被日级 flag 标中，且仅此一天
+  expect_true(all(r[record_date == as.Date("2024-01-08"), flag_daily_weight_low]))
+  expect_equal(data.table::uniqueN(r[flag_daily_weight_low %in% TRUE, record_date]), 1)
+})
+
+test_that("day-level consensus exempts single-record days (issue #14)", {
+  skip_if_not_installed("data.table")
+
+  set.seed(20260904)
+  days <- 15
+  base_w <- seq(50000, 105000, length.out = days)
+  rec_list <- list()
+  for (d in 1:days) {
+    n_rec <- if (d == 8) 1 else 2   # 第 8 天仅 1 条记录
+    rec_list[[length(rec_list) + 1]] <- data.table::data.table(
+      animal_id = "A001",
+      record_date = as.Date("2024-01-01") + d - 1,
+      weight_g = round(base_w[d] + if (n_rec == 2) c(150, -120) else 0),
+      device_type = "YANGXIANG"
+    )
+  }
+  dt <- data.table::rbindlist(rec_list)
+  # 第 8 天唯一记录 +6kg（w≈0.41 < 0.9，若无准入规则本会被标中）
+  dt[record_date == as.Date("2024-01-08"), weight_g := weight_g + 6000]
+
+  cfg <- ZhenM_merge_config(list(national_standard = list(test_weight_range = c(60, 100))))
+  r <- ZhenM_qc_weight_standard(dt, "national_standard", cfg)
+
+  # 准入条件：单记录天不由日级共识规则管辖
+  expect_false(any(r[record_date == as.Date("2024-01-08"), flag_daily_weight_low]))
+})
+
+test_that("daily_weight_threshold is honored from config (issue #14)", {
+  skip_if_not_installed("data.table")
+
+  set.seed(20260903)
+  days <- 15
+  base_w <- seq(50000, 105000, length.out = days)
+  rec_list <- list()
+  for (d in 1:days) {
+    rec_list[[length(rec_list) + 1]] <- data.table::data.table(
+      animal_id = "A001",
+      record_date = as.Date("2024-01-01") + d - 1,
+      weight_g = round(base_w[d] + c(150, -120)),
+      device_type = "YANGXIANG"
+    )
+  }
+  dt <- data.table::rbindlist(rec_list)
+  dt[record_date == as.Date("2024-01-08"), weight_g := weight_g + 5000]
+
+  r_hi <- ZhenM_qc_weight_standard(dt, "national_standard",
+    ZhenM_merge_config(list(national_standard = list(test_weight_range = c(60, 100),
+                                                    daily_weight_threshold = 0.9))))
+  r_lo <- ZhenM_qc_weight_standard(dt, "national_standard",
+    ZhenM_merge_config(list(national_standard = list(test_weight_range = c(60, 100),
+                                                    daily_weight_threshold = 0.1))))
+
+  # 第 8 天偏移足够大：0.9 下标中；阈值收紧到 0.1 后不再由日级规则标出
+  expect_true(all(r_hi[record_date == as.Date("2024-01-08"), flag_daily_weight_low]))
+  expect_false(any(r_lo[record_date == as.Date("2024-01-08"), flag_daily_weight_low]))
+})

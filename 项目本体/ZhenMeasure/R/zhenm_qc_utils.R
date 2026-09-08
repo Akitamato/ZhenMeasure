@@ -161,22 +161,3 @@
 
   list(r2 = r2, pass = pass, error = NULL)
 }
-
-#' Identify dates with all weight anomalies
-#'
-#' 找出某日所有体重都是异常的日期
-#'
-#' @param weight_records Data table with record_date and flag columns
-#' @param flag_col Flag column name indicating single-record anomalies
-#'
-#' @return Vector of dates where all records are anomalous
-#' @keywords internal
-.identify_bad_dates <- function(weight_records, flag_col = "flag_outlier_single") {
-  summary <- weight_records[, .(
-    total_count = .N,
-    outlier_count = sum(get(flag_col), na.rm = TRUE)
-  ), by = record_date]
-  
-  bad_dates <- summary[outlier_count == total_count, record_date]
-  return(bad_dates)
-}

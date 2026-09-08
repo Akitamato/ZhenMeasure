@@ -2,6 +2,13 @@
 #'
 #' Perform weight quality control on standard records (standard_data) and flag abnormal records.
 #'
+#' @details
+#' 单轮 RLM 拟合 + 双阈值判定（issue #14 还原原始设计）：
+#' \itemize{
+#'   \item 记录级：RLM 权重 <= \code{weight_threshold}（默认 0.25）的单条记录判异常（\code{flag_weight_low}）；
+#'   \item 日级：当日有效记录数 >= 2 且全部记录的 RLM 权重 < \code{daily_weight_threshold}（默认 0.90）时整日判异常（\code{flag_daily_weight_low}）；单记录天不参与日级共识。
+#' }
+#'
 #' @param standard_records Standard-level data
 #' @param qc_method QC method: "national_standard" (the only supported method since V1.0.0).
 #' @param config Configuration list
@@ -166,17 +173,26 @@ ZhenM_qc_weight_standard <- function(standard_records, qc_method = "national_sta
     rlm_weights_1 <- rep(NA_real_, length(y))
     rlm_weights_1[valid] <- rlm_fit_1$w
     
-    # ===== Step 2: Weight records with weight values below the threshold are considered abnormal and set to NA =====
+    # ===== Step 2: 双阈值判定（issue #14：单轮 RLM + 记录级/日级两道阈值）=====
+    # 记录级：w <= weight_threshold（0.25，~5σ）的单条记录判异常
+    # 日级：当日 >=2 条有效记录的 w 全部 < daily_weight_threshold（0.90，~1.5σ）
+    #       时整日判异常；单记录天无"全部一致"语义，不参与共识
     wt_threshold <- cfg$national_standard$weight_threshold
+    wt_threshold_daily <- if (!is.null(cfg$national_standard$daily_weight_threshold)) {
+      as.numeric(cfg$national_standard$daily_weight_threshold)
+    } else 0.90
     weight_records[, flag_outlier_single := rlm_weights_1 <= wt_threshold]
-    
-    # ===== Step 3: If all weight values on a certain day are below the threshold, all weights on that day are considered abnormal and set to NA =====
-    bad_dates <- .identify_bad_dates(weight_records, flag_col = "flag_outlier_single")
-    
-    # Create cleaned weight column (abnormal and all-day abnormal are set to NA)
+    weight_records[, flag_low_daily := rlm_weights_1 < wt_threshold_daily]
+
+    day_consensus <- weight_records[!is.na(rlm_weights_1),
+      .(n_valid = .N, n_low = sum(flag_low_daily)), by = record_date]
+    bad_dates <- day_consensus[n_valid >= 2 & n_low == n_valid, record_date]
+
+    # Create cleaned weight column (rule 1 + rule 2 set to NA)
     weight_records[, cleaned_weight := weight_g]
     weight_records[flag_outlier_single == TRUE, cleaned_weight := NA_real_]
     weight_records[record_date %in% bad_dates, cleaned_weight := NA_real_]
+    weight_records[, flag_daily_weight_low := record_date %in% bad_dates]
     
     # ===== Step 4: Calculate daily weight after handling abnormal data =====
     # Merge the rlm weight of each record into the table to ensure alignment with cleaned_weight
@@ -213,58 +229,10 @@ ZhenM_qc_weight_standard <- function(standard_records, qc_method = "national_sta
       next
     }
     
-    # ===== Step 5: Perform regression fitting on the growth curve based on daily weight =====
-    # Measurement days: counting from 1
-    day_daily <- seq_len(nrow(daily_weight_data))
-    y_daily <- daily_weight_data$daily_weight
-    
-    if (sum(!is.na(y_daily)) < 10) {
-      animals_to_delete <- c(animals_to_delete, id)
-      next
-    }
-    
-    # Second RLM fit
-    # Model: daily_weight ~ day + day^2
-    rlm_fit_2 <- .safe_rlm_fit(y_daily, day_daily, formula_type = "polynomial", maxit = 60)
-
-    if (is.null(rlm_fit_2)) {
-      animals_to_delete <- c(animals_to_delete, id)
-      next
-    }
-
-    # Get the weights of the second RLM fit
-    valid_daily <- !is.na(y_daily) & !is.na(day_daily)
-    rlm_weights_2 <- rep(NA_real_, length(y_daily))
-    rlm_weights_2[valid_daily] <- rlm_fit_2$w
-
-    # Mark dates where the second RLM weight is too low
-    daily_weight_data[, rlm_weight_daily := rlm_weights_2]
-    daily_weight_data[, flag_daily_low := rlm_weight_daily <= wt_threshold]
-
-    # Map the weights and flags of the second RLM fit back to the original records
-    date_daily_rlm_map <- data.table::data.table(
-      record_date = daily_weight_data$record_date,
-      rlm_weight_daily = daily_weight_data$rlm_weight_daily,
-      flag_daily_low = daily_weight_data$flag_daily_low
-    )
-
-    dt <- .map_daily_values_to_records(
-      dt, idx,
-      daily_data = date_daily_rlm_map,
-      value_col = "rlm_weight_daily",
-      output_col = "rlm_weight_daily"
-    )
-
-    dt <- .map_daily_values_to_records(
-      dt, idx,
-      daily_data = date_daily_rlm_map,
-      value_col = "flag_daily_low",
-      output_col = "flag_daily_weight_low"
-    )
-    
     # Assign the weight values from step 1 directly back to the original standard records (exact match via row index)
     dt[weight_records$row_idx, rlm_weight := rlm_weights_1]
     dt[weight_records$row_idx, flag_weight_low := weight_records$flag_outlier_single]
+    dt[weight_records$row_idx, flag_daily_weight_low := weight_records$flag_daily_weight_low]
 
     # ===== Step 6: Gompertz 生长曲线检查 (可选) =====
     if (isTRUE(cfg$national_standard$use_gompertz) &&
@@ -335,7 +303,7 @@ ZhenM_qc_weight_standard <- function(standard_records, qc_method = "national_sta
   log_detail(paste0("Animals deleted due to insufficient growth curve R²: ", length(animals_to_delete)))
   log_detail(paste0("flag_weight_out_of_range: ", n_out_of_range))
   log_detail(paste0("flag_weight_low (RLM weight too low): ", n_weight_low))
-  log_detail(paste0("flag_daily_weight_low (Daily RLM weight too low): ", n_daily_wt_low))
+  log_detail(paste0("flag_daily_weight_low (all valid records of day below daily threshold): ", n_daily_wt_low))
   log_detail(paste0("flag_growth_curve_poor: ", n_growth_poor))
   log_detail(paste0("flag_Gompertz_WT: ", n_gompertz_wt))
   n_total_after_filter <- nrow(dt)
