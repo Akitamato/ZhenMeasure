@@ -313,3 +313,50 @@ test_that("record-level speed cap threads speed_max from config (issue #12)", {
   expect_equal(d5_def, 170 + 400)
   expect_equal(d5_cfg, 300 + 400)
 })
+
+test_that("LMM compensation sign guard skips positive beta (issue #13)", {
+  skip_if_not_installed("lme4")
+
+  set.seed(20260902)
+  rec_list <- list()
+  for (id in 1:3) {
+    idc <- sprintf("A%03d", id)
+    for (d in 1:30) {
+      flagged <- (d %% 5) == 0
+      # 反向关系：被 flag 天的干净记录采食远高于干净天（visits_n 同为 3，
+      # 体重平滑无差）→ dur 特征的 β 被估成正号
+      rec_list[[length(rec_list) + 1]] <- data.table::data.table(
+        animal_id = idc,
+        record_date = as.Date("2024-01-01") + d - 1,
+        feed_g = if (flagged) c(1000, 1000, 5000) else c(300, 300, 300),
+        weight_g = 30000 + id * 1000 + d * 150,
+        duration_sec = if (flagged) c(300, 300, 600) else c(300, 300, 300),
+        is_outlier_feed = if (flagged) c(FALSE, FALSE, TRUE) else c(FALSE, FALSE, FALSE),
+        flag_speed_too_fast = if (flagged) c(FALSE, FALSE, TRUE) else c(FALSE, FALSE, FALSE)
+      )
+    }
+  }
+  dt <- data.table::rbindlist(rec_list)
+
+  # 关记录级纠正 → 置零 + LMM 兜底路径
+  cfg <- list(national_standard = list(use_record_feed_correction = FALSE))
+  warn_hit <- FALSE
+  res <- withCallingHandlers(
+    ZhenM_standard_to_daily_filtered(data.table::copy(dt), cfg),
+    warning = function(w) {
+      if (grepl("unexpected sign", conditionMessage(w))) {
+        warn_hit <<- TRUE
+        invokeRestart("muffleWarning")
+      }
+    }
+  )
+
+  # 符号守卫触发：β>0 的特征被跳过
+  expect_true(warn_hit)
+
+  # 补偿不再向下：被 flag 天的日值 = 干净记录和（1000+1000），而非被 β>0 减小
+  flagged_dates <- as.Date("2024-01-01") + seq(4, 29, 5)
+  expect_true(all(res[record_date %in% flagged_dates, daily_feed_g] == 2000))
+  # 全程无静默 NA/负值（下限护栏 + 符号守卫共同保证）
+  expect_true(all(is.finite(res$daily_feed_g)))
+})

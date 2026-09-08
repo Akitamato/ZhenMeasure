@@ -587,17 +587,28 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
         for (feat in active_feats) {
           if (feat %in% names(fixed_eff)) {
             beta_val <- fixed_eff[[feat]]
+            # issue #13：补偿语义是「加回被丢的真实采食」，-β×feature 依赖
+            # β<0 先验；共线性/小样本可能估出 β>0，此时该项会把日值往下减。
+            # 跳过该特征并告警，不让方向错误的补偿进入应用环节。
+            if (beta_val > 0) {
+              warning(sprintf(
+                "LMM Feed Correction: coefficient for %s has unexpected sign (beta = %.4f > 0); feature skipped.",
+                feat, beta_val), call. = FALSE)
+              next
+            }
             dt[, lmm_correction_g := lmm_correction_g - beta_val * get(feat)]
           }
         }
 
         # 物理速率封顶：补偿加回量 ≤ speed_max × 目标类别总时长 / 60，
         # 即加回部分隐含的采食速率不得超过生理上限（吸收记录级物理规则作先验）；
-        # stack 模式只对噪声置零类的时长封顶（互补口径）
+        # stack 模式只对噪声置零类的时长封顶（互补口径）。
+        # 下限 0（issue #13）：补偿是「加回」，物理上不为负——pmax 兜底
+        # 防止任何未来路径把日值往下减（减穿 0 会被出口校验静默置 NA）。
         speed_max <- if (!is.null(ns_cfg$speed_max)) as.numeric(ns_cfg$speed_max) else 170
         cap_base <- if (stack) dt$noise_dur_total else dt$flagged_dur_total
         cap_g <- speed_max * cap_base / 60
-        dt[, lmm_correction_g := pmin(lmm_correction_g, cap_g)]
+        dt[, lmm_correction_g := pmax(0, pmin(lmm_correction_g, cap_g))]
 
         n_corrected <- sum(abs(dt$lmm_correction_g) > 0.001, na.rm = TRUE)
         n_capped <- sum(cap_base > 0 &
