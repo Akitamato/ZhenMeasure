@@ -63,14 +63,17 @@
   if (sum(valid) < 10) {
     return(NULL)
   }
-  
-  rlm_fit <- switch(formula_type,
-    "linear" = MASS::rlm(y[valid] ~ x[valid], maxit = maxit),
-    "polynomial" = MASS::rlm(y[valid] ~ x[valid] + I(x[valid]^2), maxit = maxit),
-    NULL
-  )
 
-  tryCatch(rlm_fit, error = function(e) NULL)
+  # tryCatch 必须包住 switch 本身：switch 急切求值 MASS::rlm()，若只包住
+  # 已算出的结果值，拟合报错（如非有限值）会穿透并中断整个 QC 循环
+  tryCatch(
+    switch(formula_type,
+      "linear" = MASS::rlm(y[valid] ~ x[valid], maxit = maxit),
+      "polynomial" = MASS::rlm(y[valid] ~ x[valid] + I(x[valid]^2), maxit = maxit),
+      NULL
+    ),
+    error = function(e) NULL
+  )
 }
 
 #' Map daily values to individual records
