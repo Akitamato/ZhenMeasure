@@ -170,3 +170,59 @@ test_that("stage test_days filtering drops short stages", {
 
   expect_true(nrow(result) == 0)
 })
+
+test_that("monitor mode guards FCR_rolling_mean against zero ADG (issue #11)", {
+  skip_if_not_installed("data.table")
+  skip_if_not_installed("zoo")
+
+  dt <- data.table::data.table(
+    animal_id = rep("A001", 20),
+    record_date = seq.Date(as.Date("2024-01-01"), by = "day", length.out = 20),
+    daily_weight_g = rep(50000, 20),   # 体重完全平坦 → ADG 滚动均值 = 0
+    daily_feed_g = rep(2000, 20)
+  )
+
+  result <- ZhenM_calc_phenotypes(dt, "monitor")
+
+  # 修复前 2000/0 → Inf；守卫后应全部为 NA
+  expect_true(all(is.na(result$FCR_rolling_mean)))
+  expect_false(any(is.infinite(result$FCR_rolling_mean)))
+})
+
+test_that("research mode guards FCR_lm against zero ADG (issue #11)", {
+  skip_if_not_installed("data.table")
+
+  dt <- data.table::data.table(
+    animal_id = rep("A001", 50),
+    record_date = seq.Date(as.Date("2024-01-01"), by = "day", length.out = 50),
+    daily_weight_g = rep(50000, 50),   # 平坦 → lm 斜率 ADG_g_lm = 0
+    daily_feed_g = rep(2000, 50)
+  )
+
+  result <- ZhenM_calc_phenotypes(dt, "research")
+
+  expect_true(all(is.na(result$FCR_lm)))
+  expect_false(any(is.infinite(result$FCR_lm)))
+})
+
+test_that("weight-stage ADFI is NA (not NaN) when stage feed is all NA (issue #11)", {
+  skip_if_not_installed("data.table")
+
+  dt <- data.table::data.table(
+    animal_id = rep("A001", 100),
+    record_date = seq.Date(as.Date("2024-01-01"), by = "day", length.out = 100),
+    daily_weight_g = seq(30000, 120000, length.out = 100),
+    daily_feed_g = NA_real_   # 全程无有效采食
+  )
+
+  result <- ZhenM_calc_phenotypes(
+    dt,
+    phenotype_method = "standard_fcr",
+    stage_mode = "weight",
+    target_weight_stages = c(30, 60, 90, 120)
+  )
+
+  # 修复前：阶段内 mean(na.rm=TRUE) 对全 NA 得 NaN 进结果表
+  expect_true(nrow(result) >= 1)
+  expect_false(any(sapply(result, function(col) any(is.nan(col)))))
+})

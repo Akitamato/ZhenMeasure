@@ -115,7 +115,9 @@ ZhenM_calc_phenotypes_stage <- function(
     res <- stage_data[order(record_date), {
       out <- list()
       daily_recs <- unique(.SD[, .(record_date, daily_feed_g, median_weight_g, age_day, measurement_day, record_index)])
-      val_adfi <- mean(daily_recs$daily_feed_g, na.rm = TRUE)
+      # issue #11：阶段内采食全 NA 时 mean(na.rm=TRUE) 得 NaN，守卫置 NA
+      val_adfi <- if (all(is.na(daily_recs$daily_feed_g))) NA_real_
+        else mean(daily_recs$daily_feed_g, na.rm = TRUE)
       start_wt <- daily_recs$median_weight_g[1]
       end_wt <- daily_recs$median_weight_g[.N]
       axis_values <- switch(time_axis,

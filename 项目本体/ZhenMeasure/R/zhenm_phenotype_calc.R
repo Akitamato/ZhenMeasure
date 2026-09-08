@@ -427,7 +427,11 @@ ZhenM_calc_phenotypes <- function(daily_records,
     ADFI_rolling_mean_g = mean(ADFI_rolling, na.rm = TRUE) * 1000
   ), by = animal_id]
 
-  monitor_summary[, FCR_rolling_mean := ADFI_rolling_mean_g / ADG_rolling_mean_g]
+  # issue #11：体重平坦窗口 ADG_rolling_mean_g 为 0 或浮点噪声级小值
+  # （~1e-14）→ Inf/NaN/天文数字，守卫用容差 1e-6 g 置 NA
+  monitor_summary[, FCR_rolling_mean := data.table::fifelse(
+    is.finite(ADG_rolling_mean_g) & abs(ADG_rolling_mean_g) > 1e-6,
+    ADFI_rolling_mean_g / ADG_rolling_mean_g, NA_real_)]
 
   phenotypes <- merge(phenotypes, monitor_summary, by = "animal_id", all.x = TRUE)
   
@@ -493,7 +497,10 @@ ZhenM_calc_phenotypes <- function(daily_records,
   phenotypes <- merge(phenotypes, res_extra, by = "animal_id", all.x = TRUE)
   
   if ("ADFI_g_lm" %in% names(phenotypes) && "ADG_g_lm" %in% names(phenotypes)) {
-    phenotypes[, FCR_lm := ADFI_g_lm / ADG_g_lm]
+    # issue #11：体重平坦个体 lm 斜率并非精确 0 而是 ~1e-14 浮点噪声，
+    # 2000/噪声 = -2.2e16 天文数字；守卫用容差 1e-6 g/天 置 NA
+    phenotypes[, FCR_lm := data.table::fifelse(
+      is.finite(ADG_g_lm) & abs(ADG_g_lm) > 1e-6, ADFI_g_lm / ADG_g_lm, NA_real_)]
   } else {
     phenotypes[, FCR_lm := NA_real_]
   }

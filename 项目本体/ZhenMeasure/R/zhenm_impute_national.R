@@ -176,7 +176,8 @@
 
   # Check R² > 0.95
   r2 <- summary(lm_fit)$r.squared
-  if (r2 < 0.95) {
+  # issue #11：退化拟合的 r2 可能为 NA，is.na 守卫防止 if(NA) 崩溃
+  if (is.na(r2) || r2 < 0.95) {
     dt[, flag_low_r2 := TRUE]
     return(dt)
   }
@@ -245,8 +246,17 @@
   stage_fcr <- merge(stage_fcr, fcr_ranges[, .(stage_label, fcr_min, fcr_max)],
                      by = "stage_label", all.x = TRUE)
 
-  # Check if all stages are within range
-  all(stage_fcr$fcr >= stage_fcr$fcr_min & stage_fcr$fcr <= stage_fcr$fcr_max, na.rm = TRUE)
+  # issue #11：weight_gain==0 且 total_feed==0 → fcr=NaN（0/0），
+  # total_feed>0 且 weight_gain==0 → Inf。旧写法 all(..., na.rm=TRUE)
+  # 把 NaN 比较静默丢弃，全退化数据反而放行（fail-open）。改为
+  # fail-closed：空阶段表或任何非有限 fcr 一律校验不通过，
+  # 缺失区间交由上层中位数兜底，不带病外推。
+  if (nrow(stage_fcr) == 0 || any(!is.finite(stage_fcr$fcr)) ||
+      anyNA(stage_fcr$fcr_min) || anyNA(stage_fcr$fcr_max)) {
+    return(FALSE)
+  }
+
+  all(stage_fcr$fcr >= stage_fcr$fcr_min & stage_fcr$fcr <= stage_fcr$fcr_max)
 }
 
 #' National standard imputation wrapper

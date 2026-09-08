@@ -106,3 +106,43 @@ test_that("continuous-missing path does not pollute output schema (issue #8)", {
   expect_true(all(is.finite(result$daily_feed_g[miss])))
   expect_equal(which(result$is_imputed_feed), sort(miss))
 })
+
+test_that(".check_fcr_stages_v2 fails closed on degenerate stages (issue #11)", {
+  cfg <- ZhenM_default_config("national_standard")
+
+  # 正常阶段（fcr=1.2 ∈ [1.14,3.30]）+ 0/0 退化阶段（gain=0 且 feed=0 → NaN）
+  mixed <- data.table::data.table(
+    daily_feed_g = c(3000, 3000, 0, 0),
+    weight_kg    = c(55, 60, 65, 65)
+  )
+  # 修复前：NaN 比较被 na.rm=TRUE 丢弃 → 正常阶段单独放行（fail-open 返回 TRUE）
+  expect_false(ZhenMeasure:::.check_fcr_stages_v2(mixed, cfg))
+
+  # 全退化阶段：旧写法 all(logical(0)) 返回 TRUE
+  degen <- data.table::data.table(daily_feed_g = rep(0, 4), weight_kg = rep(65, 4))
+  expect_false(ZhenMeasure:::.check_fcr_stages_v2(degen, cfg))
+
+  # Inf 路径（feed>0、gain=0）保持拦截
+  inf_case <- data.table::data.table(
+    daily_feed_g = c(3000, 3000, 2000, 2000),
+    weight_kg    = c(55, 60, 65, 65)
+  )
+  expect_false(ZhenMeasure:::.check_fcr_stages_v2(inf_case, cfg))
+})
+
+test_that("feed imputation survives degenerate FCR fit data (issue #11)", {
+  # 平坦体重 + 窗口全 0 feed → 旧代码 FCR 守卫放行后带病外推；
+  # 新代码 fail-closed → 缺失天由中位数兜底填充，全程无报错
+  n <- 20
+  dt <- data.table::data.table(
+    animal_id = "A001",
+    record_date = seq.Date(as.Date("2024-01-01"), by = "day", length.out = n),
+    daily_weight_g = rep(65000, n),
+    daily_feed_g = c(rep(0, 8), rep(NA_real_, 4), rep(0, 8))
+  )
+  cfg <- ZhenM_default_config("national_standard")
+  result <- ZhenMeasure:::.impute_feed_national_v2(data.table::copy(dt), cfg)
+
+  expect_true(all(is.finite(result$daily_feed_g)))
+  expect_equal(which(result$is_imputed_feed), 9:12)
+})
