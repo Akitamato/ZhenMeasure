@@ -260,48 +260,11 @@ ZhenM_attach_measurement_day <- function(dt) {
 #' Parse datetime with multiple formats
 #' @keywords internal
 .parse_datetime <- function(x) {
-  if (all(is.na(x))) return(as.POSIXct(NA))
-
-  x_char <- trimws(as.character(x))
-
-  # 先按文本格式解析（含紧凑 Ymd 如 "20240101"）。
-  # issue #9：纯数字判定必须放在解析尝试之后——放在前面会把紧凑日期
-  # 误判成 Excel 序列号（20240101 → 约 57355 年的荒谬日期，且静默无告警）。
-  parsed <- suppressWarnings(
-    lubridate::parse_date_time(
-      x_char,
-      orders = c("Ymd HMS", "Ymd HM", "Ymd", "Y-m-d H:M:S", "Y-m-d H:M", "Y-m-d",
-                 "Y/m/d H:M:S", "Y/m/d H:M", "Y/m/d", "dmy HMS", "dmy HM", "dmy",
-                 "mdy HMS", "mdy HM", "mdy"),
-      tz = "UTC"
-    )
-  )
-
-  # 解析失败的元素再回退 Excel 序列号：仅当数值落在合理区间
-  # [20000, 60000]（约 1954-2064）才按序列号解读；"20240101" 远超上界
-  # 不会被误读。与 ZhenM_safe_to_idate 的「先解析后回退」口径对齐。
-  na_pos <- which(is.na(parsed) & !is.na(x_char))
-  if (length(na_pos) > 0) {
-    numeric_vals <- suppressWarnings(as.numeric(x_char[na_pos]))
-    is_serial <- !is.na(numeric_vals) & numeric_vals >= 20000 & numeric_vals <= 60000
-    if (any(is_serial)) {
-      tgt <- na_pos[is_serial]
-      parsed[tgt] <- as.POSIXct(
-        (numeric_vals[is_serial] - 25569) * 86400, origin = "1970-01-01", tz = "UTC"
-      )
-    }
-  }
-
-  # If still all NA, try as.POSIXct
-  if (all(is.na(parsed))) {
-    parsed <- tryCatch({
-      as.POSIXct(x_char, tz = "UTC")
-    }, error = function(e) {
-      rep(as.POSIXct(NA), length(x_char))
-    })
-  }
-
-  as.POSIXct(parsed, tz = "UTC")
+  if (inherits(x, "POSIXct")) return(x)
+  if (inherits(x, "Date")) return(as.POSIXct(x, tz = "UTC"))
+  # issue #20：文本解析与 Excel 序列号回退统一到 .parse_temporal()，
+  # 与 ZhenM_parse_datetime / ZhenM_safe_to_idate 共用同一顺序表与序列号区间
+  .parse_temporal(x, out = "datetime")
 }
 
 #' Recursively find supported tabular data files

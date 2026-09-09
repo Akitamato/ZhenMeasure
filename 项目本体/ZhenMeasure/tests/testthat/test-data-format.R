@@ -67,6 +67,36 @@ test_that(".parse_datetime leaves implausible numbers as NA (not garbage dates)"
   expect_true(is.na(res[2]))
 })
 
+test_that("三套日期解析器统一到 .parse_temporal（issue #20）", {
+  skip_if_not_installed("lubridate")
+  skip_if_not_installed("data.table")
+
+  x <- c("2024-01-01", "20240101", "2024/01/01 08:00:00", "45300",
+         "01/02/2024", "abc", NA)
+
+  # 三者对同一批文本输入结果一致（仅返回类型不同：IDate vs POSIXct）
+  expect_identical(
+    ZhenMeasure:::ZhenM_safe_to_idate(x),
+    data.table::as.IDate(ZhenMeasure:::.parse_datetime(x), tz = "UTC")
+  )
+  expect_identical(ZhenMeasure:::ZhenM_parse_datetime(x), ZhenMeasure:::.parse_datetime(x))
+
+  # dmy/mdy 文本三者一致识别（修复前只有 .parse_datetime 识别，另两者返回 NA）
+  expect_identical(as.character(ZhenMeasure:::ZhenM_safe_to_idate("01/02/2024")), "2024-02-01")
+  expect_identical(as.character(ZhenMeasure:::ZhenM_parse_datetime("13/02/2024")), "2024-02-13")
+
+  # Excel 序列号区间守卫对三者一致生效（修复前 safe/parse_datetime 无守卫）
+  expect_true(is.na(ZhenMeasure:::ZhenM_safe_to_idate("99999999")))
+  expect_true(is.na(ZhenMeasure:::ZhenM_parse_datetime("99999999")))
+  expect_equal(as.Date(ZhenMeasure:::ZhenM_safe_to_idate("45300")),
+               as.Date(45300, origin = "1899-12-30"))
+
+  # 全 NA / 空向量保持长度（修复前 .parse_datetime 全 NA 返回长度 1）
+  expect_length(ZhenMeasure:::.parse_datetime(c(NA, NA)), 2)
+  expect_length(ZhenMeasure:::.parse_datetime(character(0)), 0)
+  expect_length(ZhenMeasure:::ZhenM_safe_to_idate(c(NA_character_, NA_character_)), 2)
+})
+
 test_that(".col_names_by_pos drops invalid positions and warns (issue #15)", {
   nm <- c("a", "b", "c")
   expect_identical(ZhenMeasure:::.col_names_by_pos(nm, c(1, 3)), c("a", "c"))

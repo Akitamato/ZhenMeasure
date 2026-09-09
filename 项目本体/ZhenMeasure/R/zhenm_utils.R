@@ -173,60 +173,84 @@ ZhenM_colname_by_pos <- function(dt, pos) {
   names(dt)[valid_pos]
 }
 
+# issue #20：三套日期解析器（.parse_datetime / ZhenM_parse_datetime /
+# ZhenM_safe_to_idate）原先各复制一份「多格式文本解析 + Excel 序列号回退」，
+# 序列号口径（25569 偏移 vs 1899-12-30 原点，数学等价）与解析顺序易漂移。
+# 现统一到 .parse_temporal()：同一顺序表、同一序列号区间。
+
+# 文本解析顺序（lubridate::parse_date_time 取首个匹配的顺序）
+.temporal_orders <- c(
+  "Ymd HMS", "Ymd HM", "Ymd", "Y-m-d H:M:S", "Y-m-d H:M", "Y-m-d",
+  "Y/m/d H:M:S", "Y/m/d H:M", "Y/m/d", "dmy HMS", "dmy HM", "dmy",
+  "mdy HMS", "mdy HM", "mdy"
+)
+
+# Excel 序列号回退的合理区间（约 1954-2064）。区间外的纯数字不按序列号解读，
+# 避免把紧凑日期（如 "20240101"）误读成荒谬年份。
+.temporal_serial_range <- c(20000, 60000)
+
+#' 统一的日期/时间解析核心（issue #20）
+#'
+#' 负责文本解析与 Excel 序列号回退；Date/POSIXct/numeric 的类型快速路径由各
+#' 包装函数自行处理（三者的类型语义不同）。
+#'
+#' @param x 待解析向量（字符或可 as.character 的向量）
+#' @param out "datetime" 返回 UTC 的 POSIXct，"date" 返回 IDate
+#' @return 与 x 等长、类型由 out 指定的向量
+#' @keywords internal
+.parse_temporal <- function(x, out = c("datetime", "date")) {
+  out <- match.arg(out)
+  n <- length(x)
+  na_out <- if (identical(out, "datetime")) as.POSIXct(NA, tz = "UTC") else data.table::as.IDate(NA)
+  if (n == 0) return(na_out[0])
+
+  x_char <- trimws(as.character(x))
+  if (all(is.na(x_char))) return(rep(na_out, n))
+
+  parsed <- suppressWarnings(lubridate::parse_date_time(
+    x_char, orders = .temporal_orders, tz = "UTC"
+  ))
+
+  # 文本解析失败的元素再回退 Excel 序列号，且仅当数值落在合理区间内
+  na_pos <- which(is.na(parsed) & !is.na(x_char))
+  if (length(na_pos) > 0) {
+    numeric_vals <- suppressWarnings(as.numeric(x_char[na_pos]))
+    is_serial <- !is.na(numeric_vals) &
+      numeric_vals >= .temporal_serial_range[1] & numeric_vals <= .temporal_serial_range[2]
+    if (any(is_serial)) {
+      parsed[na_pos[is_serial]] <- as.POSIXct("1899-12-30 00:00:00", tz = "UTC") +
+        numeric_vals[is_serial] * 86400
+    }
+  }
+
+  # 全部解析失败时最后尝试 as.POSIXct（可识别带时区偏移的 ISO 8601）
+  if (all(is.na(parsed))) {
+    parsed <- tryCatch(
+      as.POSIXct(x_char, tz = "UTC"),
+      error = function(e) rep(as.POSIXct(NA, tz = "UTC"), n)
+    )
+  }
+  parsed <- as.POSIXct(parsed, tz = "UTC")
+
+  if (identical(out, "datetime")) return(parsed)
+  data.table::as.IDate(parsed, tz = "UTC")
+}
+
 ZhenM_safe_to_idate <- function(x) {
   if (inherits(x, "IDate")) return(x)
   if (inherits(x, "Date")) return(data.table::as.IDate(x))
   if (inherits(x, "POSIXct")) return(data.table::as.IDate(x, tz = "UTC"))
-
-  if (is.numeric(x)) {
-    return(data.table::as.IDate(as.Date(x, origin = "1899-12-30")))
-  }
-
-  x_char <- trimws(as.character(x))
-  parsed <- suppressWarnings(lubridate::parse_date_time(
-    x_char,
-    orders = c(
-      "Ymd", "Y-m-d", "Y/m/d", "Ymd HMS", "Ymd HM",
-      "Y-m-d H:M:S", "Y-m-d H:M", "Y/m/d H:M:S", "Y/m/d H:M"
-    ),
-    tz = "UTC"
-  ))
-  out <- data.table::as.IDate(parsed)
-
-  numeric_like <- suppressWarnings(as.numeric(x_char))
-  idx_num <- is.na(out) & !is.na(numeric_like)
-  if (any(idx_num)) {
-    out[idx_num] <- data.table::as.IDate(as.Date(numeric_like[idx_num], origin = "1899-12-30"))
-  }
-
-  out
+  if (is.numeric(x)) return(data.table::as.IDate(as.Date(x, origin = "1899-12-30")))
+  .parse_temporal(x, out = "date")
 }
 
 ZhenM_parse_datetime <- function(x) {
   if (inherits(x, "POSIXct")) return(x)
   if (inherits(x, "Date")) return(as.POSIXct(x))
   if (is.numeric(x)) {
-    origin_time <- as.POSIXct("1899-12-30 00:00:00", tz = "UTC")
-    return(origin_time + x * 86400)
+    return(as.POSIXct("1899-12-30 00:00:00", tz = "UTC") + x * 86400)
   }
-
-  x_char <- trimws(as.character(x))
-  parsed <- suppressWarnings(lubridate::parse_date_time(
-    x_char,
-    orders = c(
-      "Ymd HMS", "Ymd HM", "Y-m-d H:M:S", "Y-m-d H:M",
-      "Y/m/d H:M:S", "Y/m/d H:M", "Ymd", "Y-m-d", "Y/m/d"
-    ),
-    tz = "UTC"
-  ))
-
-  numeric_like <- suppressWarnings(as.numeric(x_char))
-  idx_num <- is.na(parsed) & !is.na(numeric_like)
-  if (any(idx_num)) {
-    parsed[idx_num] <- as.POSIXct("1899-12-30 00:00:00", tz = "UTC") + numeric_like[idx_num] * 86400
-  }
-
-  as.POSIXct(parsed)
+  .parse_temporal(x, out = "datetime")
 }
 
 ZhenM_fill_down <- function(dt, cols, by = NULL) {
