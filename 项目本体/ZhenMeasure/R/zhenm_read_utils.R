@@ -354,6 +354,12 @@ ZhenM_attach_measurement_day <- function(dt) {
 
   names(birth_dt) <- tolower(names(birth_dt))
 
+  # issue #19：单列文件无法同时提供 ID 与出生日期，原实现取 names()[2] 得 NA
+  # 并抛出难懂的 "column not found: [NA]"
+  if (ncol(birth_dt) < 2) {
+    stop(paste0("出生信息文件至少需要两列（ID 与出生日期）: ", basename(birth_info_path)), call. = FALSE)
+  }
+
   id_col <- names(birth_dt)[grepl("id|耳标|编号", names(birth_dt), ignore.case = TRUE)][1]
   if (is.na(id_col)) id_col <- names(birth_dt)[1]
 

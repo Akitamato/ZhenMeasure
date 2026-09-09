@@ -109,7 +109,11 @@ ZhenM_standard_to_daily <- function(standard_data) {
     n_visits = .N,
     total_duration_sec = sum(Duration, na.rm = TRUE),
     age_day = median(AGE, na.rm = TRUE),
-    location = paste(unique(Location), collapse = ";")
+    # issue #19：先滤 NA 再拼接，避免把缺失值拼成字面 "NA"
+    location = {
+      loc <- unique(Location[!is.na(Location)])
+      if (length(loc) == 0) NA_character_ else paste(loc, collapse = ";")
+    }
   ), by = .(animal_id = ID, record_date)]
 
   # Sort
@@ -127,13 +131,19 @@ ZhenM_data_summary <- function(standard_data) {
   dt <- data.table::copy(standard_data)
   dt[, record_date := ZhenM_safe_to_idate(Visit_time)]
 
+  # issue #19：全 NA 时 range(na.rm=TRUE) 返回 c(Inf, -Inf)，改为同类型的 NA 对
+  safe_range <- function(x) {
+    if (all(is.na(x))) return(rep(x[NA_integer_], 2))
+    range(x, na.rm = TRUE)
+  }
+
   list(
     n_records = nrow(dt),
     n_animals = length(unique(dt$ID)),
-    date_range = range(dt$record_date, na.rm = TRUE),
-    weight_range_kg = range(dt$Weight / 1000, na.rm = TRUE),
-    feed_range_g = range(dt$Feed_intake, na.rm = TRUE),
-    age_range = range(dt$AGE, na.rm = TRUE),
+    date_range = safe_range(dt$record_date),
+    weight_range_kg = safe_range(dt$Weight / 1000),
+    feed_range_g = safe_range(dt$Feed_intake),
+    age_range = safe_range(dt$AGE),
     missing_age = sum(is.na(dt$AGE)),
     missing_weight = sum(is.na(dt$Weight)),
     missing_feed = sum(is.na(dt$Feed_intake)),

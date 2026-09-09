@@ -226,3 +226,42 @@ test_that("weight-stage ADFI is NA (not NaN) when stage feed is all NA (issue #1
   expect_true(nrow(result) >= 1)
   expect_false(any(sapply(result, function(col) any(is.nan(col)))))
 })
+
+test_that("全 NA 体重时阶段解析返回空且不告警（issue #19）", {
+  skip_if_not_installed("data.table")
+
+  dt <- data.table::data.table(
+    animal_id = "A001",
+    record_date = as.Date("2024-01-01") + 0:9,
+    daily_feed_g = 1000,
+    median_weight_g = NA_real_
+  )
+
+  # 修复前：min/max(na.rm=TRUE) 得 ±Inf 并告警，生成 "Inf--Inf kg" 非法阶段
+  expect_no_warning(
+    result <- ZhenM_calc_phenotypes_stage(
+      dt, stage_mode = "weight", target_weight_stages = FALSE)
+  )
+  expect_true("animal_id" %in% names(result))
+  # 无任何阶段列
+  expect_equal(setdiff(names(result), "animal_id"), character(0))
+})
+
+test_that("日期有缺口时 ADG 以日历天数为分母（issue #19）", {
+  skip_if_not_installed("data.table")
+
+  # 4 条记录跨 5 个日历天，增重 9000g
+  dt <- data.table::data.table(
+    animal_id = "A001",
+    record_date = as.Date("2024-01-01") + c(0, 1, 4, 5),
+    daily_feed_g = 3000,
+    median_weight_g = c(30000, 33000, 36000, 39000)
+  )
+
+  result <- ZhenM_calc_phenotypes_stage(
+    dt, stage_mode = "weight",
+    target_weight_stages = list("30-40kg" = c(30000, 40000)))
+
+  # 修复前：record_index 口径 → 9000/3 = 3000 g/天（高估）
+  expect_equal(result[["30-40kg_ADG"]], 1800)
+})

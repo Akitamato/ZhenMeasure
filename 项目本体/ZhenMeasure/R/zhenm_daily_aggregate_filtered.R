@@ -179,7 +179,11 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
       daily_weight_g = if (has_national_weight) {
         # National method: use pre-calculated weighted average weight
         # Exclude records where the weight is explicitly flagged as an outlier
-        valid_ww <- weighted_avg_weight_per_day[is_outlier_wt == FALSE]
+        # issue #19：无实测体重的记录不参与「当日是否有可用体重」的判定——否则其
+        # flag 由 NA 改为 FALSE（flag 语义修正）后，会把「当日实测体重全部被标异常」
+        # 的天重新填回该日均值，改变日级结果
+        valid_ww <- weighted_avg_weight_per_day[
+          !is.na(weight_filtered) & is_outlier_wt == FALSE]
         if (length(valid_ww) > 0 && any(!is.na(valid_ww))) {
           data.table::first(stats::na.omit(valid_ww))
         } else {

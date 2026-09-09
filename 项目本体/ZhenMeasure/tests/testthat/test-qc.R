@@ -469,3 +469,68 @@ test_that("speed_zero_long_duration threshold is configurable (issue #16)", {
     ZhenM_merge_config(list(national_standard = list(speed_zero_long_duration_sec = 700))))
   expect_false(r2$flag_speed_zero_long_duration[1])
 })
+
+test_that("NA 体重记录的 QC flag 为 FALSE 而非 NA（issue #19）", {
+  skip_if_not_installed("data.table")
+
+  n <- 80
+  dt <- data.table::data.table(
+    animal_id = "A001",
+    record_date = as.Date("2024-01-01") + 0:(n - 1),
+    weight_g = seq(44000, 115000, length.out = n),
+    feed_g = 2000, duration_sec = 600,
+    start_time = as.POSIXct("2024-01-01 08:00:00", tz = "UTC")
+  )
+  dt$weight_g[c(3, 17)] <- NA_real_
+
+  cfg <- ZhenM_default_config("national_standard")
+  cfg$national_standard$test_weight_range <- c(1e9, -1e9)  # 关闭整头删除以便观察 flag
+  res <- suppressWarnings(ZhenM_qc_weight_standard(dt, "national_standard", cfg))
+
+  na_rows <- res[is.na(weight_g)]
+  expect_equal(nrow(na_rows), 2L)
+  # 修复前：rlm_weights_1 为 NA → flag 列 NA → is_outlier_wt 传播 NA
+  expect_false(anyNA(na_rows$flag_weight_low))
+  expect_false(anyNA(na_rows$flag_daily_weight_low))
+  expect_false(anyNA(res$is_outlier_wt))
+  expect_false(any(na_rows$is_outlier_wt))
+})
+
+test_that("空表 QC 汇总的 percentage 为 0 而非 NaN（issue #19）", {
+  skip_if_not_installed("data.table")
+
+  empty <- data.table::data.table(animal_id = character(0), flag_weight_low = logical(0))
+  summary <- ZhenM_generate_qc_summary(empty)
+
+  expect_true(nrow(summary) >= 1)
+  expect_false(any(is.nan(summary$percentage)))
+  expect_true(all(summary$percentage == 0))
+})
+
+test_that("当日实测体重全部被标异常时 daily_weight_g 仍为 NA（issue #19）", {
+  skip_if_not_installed("data.table")
+
+  # day1：一条实测体重被标异常（out of range）+ 一条无体重记录（flag 为 FALSE 但无实测值）
+  #       → 当日无可用的实测体重，daily_weight_g 应为 NA
+  # day2：两条正常体重 → 有值
+  dt <- data.table::data.table(
+    animal_id = rep("A001", 4),
+    record_date = rep(seq.Date(as.Date("2024-01-01"), by = "day", length.out = 2), each = 2),
+    feed_g = rep(1000, 4),
+    weight_g = c(23000, NA, 60000, 61000),
+    weighted_avg_weight_per_day = c(23000, 23000, 60500, 60500),
+    duration_sec = rep(300, 4),
+    is_outlier_feed = rep(FALSE, 4),
+    is_outlier_wt = c(TRUE, FALSE, FALSE, FALSE),
+    device_type = "YANGXIANG",
+    age_day = rep(100:101, each = 2),
+    measurement_day = rep(1:2, each = 2),
+    source_file = "test.csv",
+    daily_feed_g = NA_real_
+  )
+
+  result <- ZhenM_standard_to_daily_filtered(dt)
+
+  expect_true(is.na(result[record_date == as.Date("2024-01-01"), daily_weight_g]))
+  expect_equal(result[record_date == as.Date("2024-01-02"), daily_weight_g], 60500)
+})

@@ -38,6 +38,8 @@ ZhenM_apply_bio_constraints <- function(final_pheno,
 ZhenM_resolve_stage_ranges <- function(stage_mode, target_weight_stages, target_age_stages, daily_records) {
   if (identical(stage_mode, "weight")) {
     if (isFALSE(target_weight_stages)) {
+      # issue #19：全 NA 时 min/max(na.rm=TRUE) 得 ±Inf，生成 "Inf--Inf kg" 非法阶段
+      if (all(is.na(daily_records$median_weight_g))) return(list())
       min_wt <- min(daily_records$median_weight_g, na.rm = TRUE)
       max_wt <- max(daily_records$median_weight_g, na.rm = TRUE)
       return(list(stats::setNames(list(c(min_wt, max_wt)), paste0(round(min_wt / 1000), "-", round(max_wt / 1000), "kg"))))
@@ -86,13 +88,10 @@ ZhenM_calc_phenotypes_stage <- function(
   if (!"age_day" %in% names(dt)) dt[, age_day := NA_real_]
   if (!"measurement_day" %in% names(dt)) dt[, measurement_day := NA_real_]
 
-  time_axis <- if (any(!is.na(dt$age_day))) "age_day" else if (any(!is.na(dt$measurement_day))) "measurement_day" else "record_index"
-  if (identical(time_axis, "record_index")) {
-    data.table::setorder(dt, animal_id, record_date)
-    dt[, record_index := seq_len(.N), by = animal_id]
-  } else if (!("record_index" %in% names(dt))) {
-    dt[, record_index := NA_real_]
-  }
+  # 时间轴：优先 age_day，其次 measurement_day；两者全缺时退化为「日历天数」
+  # （issue #19：原 record_index 口径在日期有缺口时把 ADG 分母算成记录条数，
+  #   导致日增重被高估——如 4 条记录跨 5 天时 ADG 被算成 gain/3 而非 gain/5）
+  time_axis <- if (any(!is.na(dt$age_day))) "age_day" else if (any(!is.na(dt$measurement_day))) "measurement_day" else "calendar_day"
 
   stages <- ZhenM_resolve_stage_ranges(stage_mode, target_weight_stages, target_age_stages, dt)
   phenotype_list <- list()
@@ -114,7 +113,7 @@ ZhenM_calc_phenotypes_stage <- function(
 
     res <- stage_data[order(record_date), {
       out <- list()
-      daily_recs <- unique(.SD[, .(record_date, daily_feed_g, median_weight_g, age_day, measurement_day, record_index)])
+      daily_recs <- unique(.SD[, .(record_date, daily_feed_g, median_weight_g, age_day, measurement_day)])
       # issue #11：阶段内采食全 NA 时 mean(na.rm=TRUE) 得 NaN，守卫置 NA
       val_adfi <- if (all(is.na(daily_recs$daily_feed_g))) NA_real_
         else mean(daily_recs$daily_feed_g, na.rm = TRUE)
@@ -123,7 +122,7 @@ ZhenM_calc_phenotypes_stage <- function(
       axis_values <- switch(time_axis,
         age_day = daily_recs$age_day,
         measurement_day = daily_recs$measurement_day,
-        record_index = daily_recs$record_index
+        calendar_day = as.numeric(daily_recs$record_date - daily_recs$record_date[1])
       )
       axis_start <- axis_values[1]
       axis_end <- axis_values[length(axis_values)]

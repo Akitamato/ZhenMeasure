@@ -76,10 +76,11 @@ ZhenM_qc_overall <- function(
   n_before <- nrow(dt)
   
   # Check if ID consists of identical repeated digits (e.g., "1111111111", "0000")
-  # Use regex: ^(\d)\1*$
-  is_valid_id <- !is.na(dt$animal_id) & 
-                 trimws(dt$animal_id) != "" & 
-                 !grepl("^(\\d)\\1*$", trimws(dt$animal_id))
+  # 占位 ID 特征：至少 3 位且全同（issue #19：原 ^(\d)\1*$ 把 "1"/"11" 等
+  # 单/双位合法 ID 也判为无效）
+  is_valid_id <- !is.na(dt$animal_id) &
+                 trimws(dt$animal_id) != "" &
+                 !grepl("^(\\d)\\1{2,}$", trimws(dt$animal_id))
   
   removed_ids_missing <- unique(dt[(!is_valid_id | is.na(record_date)) & !is.na(animal_id), animal_id])
 

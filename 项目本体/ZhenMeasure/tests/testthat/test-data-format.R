@@ -133,3 +133,37 @@ test_that("jsonlite 声明为 Imports 而非 Suggests（issue #18）", {
   expect_false(grepl("jsonlite", suggests, fixed = TRUE))
 })
 
+test_that("ZhenM_standard_to_daily 不把缺失 Location 拼成字面 NA（issue #19）", {
+  skip_if_not_installed("data.table")
+
+  std <- data.table::data.table(
+    ID = c("A001", "A001", "A001"),
+    Visit_time = as.POSIXct(c("2024-01-01 08:00:00", "2024-01-01 09:00:00",
+                              "2024-01-01 10:00:00"), tz = "UTC"),
+    Weight = c(30000, 31000, 32000), Feed_intake = c(500, 600, 700),
+    Duration = 300, AGE = 100,
+    Location = c("A", NA, "B")
+  )
+  daily <- ZhenM_standard_to_daily(std)
+  expect_identical(daily$location, "A;B")
+
+  # 全 NA → 真 NA（修复前为字面字符串 "NA"）
+  std$Location <- NA_character_
+  daily2 <- ZhenM_standard_to_daily(std)
+  expect_true(is.na(daily2$location))
+})
+
+test_that("ZhenM_data_summary 全 NA 时返回 NA 区间而非 Inf（issue #19）", {
+  skip_if_not_installed("data.table")
+
+  std <- data.table::data.table(
+    ID = "A001", Visit_time = as.POSIXct(NA),
+    Weight = NA_real_, Feed_intake = NA_real_, Duration = NA_real_,
+    AGE = NA_real_, Location = NA_character_
+  )
+  res <- ZhenM_data_summary(std)
+  for (nm in c("date_range", "weight_range_kg", "feed_range_g", "age_range")) {
+    expect_true(all(is.na(res[[nm]])), info = nm)
+    expect_false(any(is.infinite(res[[nm]])), info = nm)
+  }
+})

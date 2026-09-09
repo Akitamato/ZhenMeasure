@@ -181,8 +181,10 @@ ZhenM_qc_weight_standard <- function(standard_records, qc_method = "national_sta
     wt_threshold_daily <- if (!is.null(cfg$national_standard$daily_weight_threshold)) {
       as.numeric(cfg$national_standard$daily_weight_threshold)
     } else 0.90
-    weight_records[, flag_outlier_single := rlm_weights_1 <= wt_threshold]
-    weight_records[, flag_low_daily := rlm_weights_1 < wt_threshold_daily]
+    # issue #19：权重为 NA（无体重记录）时 flag 应为 FALSE 而非 NA，
+    # 否则 NA 会经 is_outlier_wt 传播到下游过滤
+    weight_records[, flag_outlier_single := !is.na(rlm_weights_1) & rlm_weights_1 <= wt_threshold]
+    weight_records[, flag_low_daily := !is.na(rlm_weights_1) & rlm_weights_1 < wt_threshold_daily]
 
     day_consensus <- weight_records[!is.na(rlm_weights_1),
       .(n_valid = .N, n_low = sum(flag_low_daily)), by = record_date]

@@ -24,10 +24,13 @@ ZhenM_generate_qc_summary <- function(qc_data) {
     ))
   }
   
+  n_rows <- nrow(dt)
+
   summary_list <- lapply(flag_cols, function(col) {
     # 统计标记为 TRUE 的行数
     n_flagged <- sum(dt[[col]] == TRUE, na.rm = TRUE)
-    pct <- n_flagged / nrow(dt) * 100
+    # issue #19：空表时占比无定义，返回 0 而非 NaN
+    pct <- if (n_rows == 0) 0 else n_flagged / n_rows * 100
 
     # 根据列名分配严重程度
     severity <- if (grepl("incomplete|growth_curve_poor|out_of_range", col)) {
