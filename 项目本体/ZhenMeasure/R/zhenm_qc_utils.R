@@ -158,3 +158,55 @@
 
   list(r2 = r2, pass = pass, error = NULL)
 }
+
+#' 批量生长曲线质控：逐头判定是否删除（issue #22）
+#'
+#' 对日级数据中每个个体做二次曲线拟合，点数不足（< 10 个有效体重点）或
+#' R² 低于阈值即列入删除名单。原实现在 run_zhen_measure() 内以循环 + `c()`
+#' 追加实现（O(n²) 复制）且每头做一次全表子集；此处改为一次 split 取各头
+#' 有效体重点 + 预分配判定向量，判定集合与计数口径不变。
+#'
+#' @param daily_data 日级表（需含 animal_id / record_date / daily_weight_g）
+#' @param min_r2 R² 阈值
+#' @return list(animals_to_delete, n_insufficient, n_low_r2)；
+#'   animals_to_delete 顺序与 unique(daily_data$animal_id) 一致
+#' @keywords internal
+.check_growth_curve_batch <- function(daily_data, min_r2) {
+  ids_to_check <- unique(daily_data$animal_id)
+  if (length(ids_to_check) == 0) {
+    return(list(animals_to_delete = character(), n_insufficient = 0L, n_low_r2 = 0L))
+  }
+
+  pts_by_id <- split(daily_data[!is.na(daily_weight_g)], by = "animal_id")
+  delete_flag <- logical(length(ids_to_check))
+
+  n_insufficient <- 0L
+  n_low_r2 <- 0L
+  for (i in seq_along(ids_to_check)) {
+    id <- ids_to_check[i]
+    # 个体 ID 为 NA 时旧实现 `animal_id == NA` 取不到任何行 → 计为点数不足，
+    # 此处保持同一口径（正常流程中 NA ID 已在 Overall QC 剔除）
+    valid_pts <- if (is.na(id)) NULL else pts_by_id[[as.character(id)]]
+
+    if (is.null(valid_pts) || nrow(valid_pts) < 10) {
+      delete_flag[i] <- TRUE
+      n_insufficient <- n_insufficient + 1L
+      next
+    }
+
+    x <- as.numeric(valid_pts$record_date - min(valid_pts$record_date))
+    y <- valid_pts$daily_weight_g
+
+    fit_res <- .check_growth_fit(y, x, min_r2 = min_r2)
+    if (!fit_res$pass) {
+      delete_flag[i] <- TRUE
+      n_low_r2 <- n_low_r2 + 1L
+    }
+  }
+
+  list(
+    animals_to_delete = ids_to_check[delete_flag],
+    n_insufficient = n_insufficient,
+    n_low_r2 = n_low_r2
+  )
+}

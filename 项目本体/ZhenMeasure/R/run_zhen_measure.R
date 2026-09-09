@@ -139,32 +139,14 @@ run_zhen_measure <- function(data_path, data_type, format_path,
     if (!is.null(logger)) logger$section("Step 5.5: 整体生长曲线质控(基于日龄聚合)")
     
     # Check growth curve R2 for each animal based on daily_weight_g
-    ids_to_check <- unique(daily_data$animal_id)
-    animals_to_delete <- character()
+    # issue #22：逐头判定逻辑抽取为 .check_growth_curve_batch()，循环内不再
+    # 用 c() 追加删除名单（O(n²) 复制）、不再每头做一次全表子集
     min_r2 <- cfg$national_standard$growth_curve_r2_min
-    
-    n_insufficient <- 0L
-    n_low_r2 <- 0L
-    for (id in ids_to_check) {
-      sub_daily <- daily_data[animal_id == id]
-      valid_pts <- sub_daily[!is.na(daily_weight_g)]
+    gc_batch <- .check_growth_curve_batch(daily_data, min_r2 = min_r2)
+    animals_to_delete <- gc_batch$animals_to_delete
+    n_insufficient <- gc_batch$n_insufficient
+    n_low_r2 <- gc_batch$n_low_r2
 
-      if (nrow(valid_pts) < 10) {
-        animals_to_delete <- c(animals_to_delete, id)
-        n_insufficient <- n_insufficient + 1L
-        next
-      }
-
-      x <- as.numeric(valid_pts$record_date - min(valid_pts$record_date))
-      y <- valid_pts$daily_weight_g
-
-      fit_res <- .check_growth_fit(y, x, min_r2 = min_r2)
-      if (!fit_res$pass) {
-        animals_to_delete <- c(animals_to_delete, id)
-        n_low_r2 <- n_low_r2 + 1L
-      }
-    }
-    
     if (length(animals_to_delete) > 0) {
       if (!is.null(logger)) {
         logger$info(sprintf("生长曲线质控删除个体数: %d（点数不足 %d 头, R²低于阈值 %d 头）",

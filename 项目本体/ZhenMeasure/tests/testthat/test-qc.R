@@ -562,3 +562,72 @@ test_that("当日实测体重全部被标异常时 daily_weight_g 仍为 NA（is
   expect_true(is.na(result[record_date == as.Date("2024-01-01"), daily_weight_g]))
   expect_equal(result[record_date == as.Date("2024-01-02"), daily_weight_g], 60500)
 })
+
+test_that("生长曲线批量判定：点数不足/拟合差/合格三类（issue #22）", {
+  skip_if_not_installed("data.table")
+  set.seed(20260909)
+
+  # A: 合格（30 天，二次曲线 + 小噪声）
+  d <- 0:29
+  a <- data.table::data.table(
+    animal_id = "A",
+    record_date = as.Date("2024-01-01") + d,
+    daily_weight_g = 30000 + 700 * d + 8 * d^2 + stats::rnorm(30, 0, 50)
+  )
+  # B: 点数不足（只有 9 个有效体重点）
+  b <- data.table::data.table(
+    animal_id = "B",
+    record_date = as.Date("2024-01-01") + 0:8,
+    daily_weight_g = 30000 + 700 * (0:8)
+  )
+  # C: 点数够但拟合差（阶跃，二次拟合 R² 低于阈值）
+  c_dt <- data.table::data.table(
+    animal_id = "C",
+    record_date = as.Date("2024-01-01") + 0:29,
+    daily_weight_g = c(rep(30000, 15), rep(50000, 15))
+  )
+  daily <- data.table::rbindlist(list(a, b, c_dt))
+
+  res <- ZhenMeasure:::.check_growth_curve_batch(daily, min_r2 = 0.99)
+
+  # 删除集合与顺序与 unique(animal_id) 一致（旧实现按此顺序 c() 追加）
+  expect_identical(res$animals_to_delete, c("B", "C"))
+  expect_equal(res$n_insufficient, 1L)
+  expect_equal(res$n_low_r2, 1L)
+
+  # 空输入返回空结果
+  res0 <- ZhenMeasure:::.check_growth_curve_batch(daily[0], min_r2 = 0.99)
+  expect_length(res0$animals_to_delete, 0)
+  expect_equal(res0$n_insufficient, 0L)
+  expect_equal(res0$n_low_r2, 0L)
+})
+
+test_that("连续性检查只保留最长合格段（issue #22 非等值 join 回填）", {
+  skip_if_not_installed("data.table")
+
+  # 段 1：第 1-5 天（5 个有效天）；空档 10 天；段 2：第 16-25 天（10 个有效天）
+  seg1 <- data.table::data.table(
+    animal_id = "A",
+    record_date = as.Date("2024-01-01") + 0:4,
+    weight_g = seq(30000, 32000, length.out = 5)
+  )
+  seg2 <- data.table::data.table(
+    animal_id = "A",
+    record_date = as.Date("2024-01-01") + 15:24,
+    weight_g = seq(40000, 45000, length.out = 10)
+  )
+  dt <- data.table::rbindlist(list(seg1, seg2))
+
+  res <- ZhenM_qc_overall(
+    dt,
+    config = list(national_standard = list(min_test_days = 3, max_missing_rate = 0.6)),
+    inactive_days_threshold = 5,
+    min_segment_days = 3
+  )
+
+  kept <- res$records
+  expect_equal(nrow(kept), 10)
+  expect_equal(min(kept$record_date), as.Date("2024-01-16"))
+  expect_equal(max(kept$record_date), as.Date("2024-01-25"))
+  expect_equal(res$summary[step == "continuity_removed_records", n_removed], 5)
+})

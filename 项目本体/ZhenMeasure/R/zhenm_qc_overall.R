@@ -184,9 +184,13 @@ ZhenM_qc_overall <- function(
 
     n_before <- nrow(dt)
     dt[, keep_segment := FALSE]
-    for (idx in seq_len(nrow(qualified_segments))) {
-      seg <- qualified_segments[idx]
-      dt[animal_id == seg$animal_id & record_date >= seg$start_date & record_date <= seg$end_date, keep_segment := TRUE]
+    # issue #22：段区间回填由「逐段全表扫描」改为一次非等值 join
+    # （O(段数 × 记录数) → O(记录数 + 命中行数)），命中集合与旧实现一致
+    if (nrow(qualified_segments) > 0) {
+      seg_hit <- dt[qualified_segments,
+                    on = .(animal_id, record_date >= start_date, record_date <= end_date),
+                    which = TRUE, nomatch = NULL]
+      if (length(seg_hit) > 0) dt[seg_hit, keep_segment := TRUE]
     }
     dt <- dt[keep_segment == TRUE]
     continuity_removed_records <- n_before - nrow(dt)
