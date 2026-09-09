@@ -253,12 +253,22 @@ ZhenM_qc_weight_standard <- function(standard_records, qc_method = "national_sta
       valid_gomp <- !is.na(y_gomp)
 
       if (sum(valid_gomp) >= cfg$national_standard$gompertz_min_obs) {
+        # issue #29：公式里不能用 x_gomp[valid_gomp] 这类子集表达式。其一，
+        # predict(newdata = list(x = ...)) 匹配不上表达式、被静默忽略而回退到
+        # 拟合值；其二（更严重）nls 会校验「响应长度是否整除模型变量长度」
+        # （n %% respLength == 0），一旦有缺失日 sum(valid) < n 即不整除，
+        # nls 直接报错 str2lang("~")、被 tryCatch 吞成 NULL，整头动物静默跳过。
+        # FIRE 实测：211 头中 190 头因此从未做过 Gompertz 检查。
+        # 用干净数据框 + 公式变量名 x/y 建模，两条问题一并消除。
+        gomp_data <- data.frame(x = x_gomp[valid_gomp], y = y_gomp[valid_gomp])
+
         gompertz_fit <- tryCatch({
-          A_init <- max(y_gomp[valid_gomp], na.rm = TRUE) * 1.1
+          A_init <- max(gomp_data$y, na.rm = TRUE) * 1.1
           B_init <- 2
           C_init <- 0.05
 
-          stats::nls(y_gomp[valid_gomp] ~ A * exp(-B * exp(-C * x_gomp[valid_gomp])),
+          stats::nls(y ~ A * exp(-B * exp(-C * x)),
+                     data = gomp_data,
                      start = list(A = A_init, B = B_init, C = C_init),
                      control = stats::nls.control(
                        maxiter = cfg$national_standard$gompertz_maxiter,
@@ -266,8 +276,8 @@ ZhenM_qc_weight_standard <- function(standard_records, qc_method = "national_sta
         }, error = function(e) NULL)
 
         if (!is.null(gompertz_fit)) {
-          pred <- predict(gompertz_fit, newdata = list(x = x_gomp[valid_gomp]))
-          resid <- y_gomp[valid_gomp] - pred
+          pred <- stats::predict(gompertz_fit, newdata = data.frame(x = gomp_data$x))
+          resid <- gomp_data$y - pred
           mad_val <- stats::mad(resid, na.rm = TRUE)
 
           if (mad_val > 0) {

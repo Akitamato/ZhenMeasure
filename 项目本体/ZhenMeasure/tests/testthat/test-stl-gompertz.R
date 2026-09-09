@@ -175,6 +175,69 @@ test_that("Gompertz flag is NOT created when use_gompertz = FALSE (default)", {
   expect_true(all(!result$flag_Gompertz_WT))  # 全部为 FALSE
 })
 
+test_that("Gompertz flags a planted single-day weight spike via newdata residuals (issue #29)", {
+  skip_if_not_installed("data.table")
+
+  # 90 天 Gompertz 生长曲线（45→110kg），第 70 天人为抬高 3kg。
+  # 记录级 RLM 不判该天异常（flag_weight_low=0），故异常只能由 Gompertz
+  # 残差路径捕获——该路径依赖 predict(newdata=) 生效（issue #29）。
+  set.seed(29)
+  n <- 90
+  w <- 115 * exp(-2.3 * exp(-0.055 * (1:n))) * 1000
+  w[70] <- w[70] + 3000
+  dt <- data.table::data.table(
+    animal_id = "A001",
+    record_date = rep(seq.Date(as.Date("2024-01-01"), by = "day", length.out = n), each = 2),
+    weight_g = rep(w, each = 2) + stats::rnorm(2 * n, 0, 50),
+    feed_g = 2500,
+    device_type = "YANGXIANG"
+  )
+
+  result <- suppressWarnings(ZhenM_qc_weight_standard(dt, "national_standard",
+    config = list(national_standard = list(
+      use_gompertz = TRUE,
+      gompertz_mad_multiplier = 4,
+      test_weight_range = c(200, 20)  # 关闭全量程筛选，避免整头被删
+    ))))
+
+  spike_date <- as.Date("2024-03-10")  # 第 70 天
+  expect_true(any(result$flag_Gompertz_WT & result$record_date == spike_date))
+  expect_equal(sum(result$flag_weight_low, na.rm = TRUE), 0)  # 确非记录级 RLM 捕获
+})
+
+test_that("Gompertz still runs when some days have no weight (issue #29 nls subset abort)", {
+  skip_if_not_installed("data.table")
+
+  # 关键回归：旧公式把子集写在公式里（y_gomp[valid] ~ ... x_gomp[valid]），
+  # nls 会校验 n %% respLength == 0；一旦有缺体重日 sum(valid) < n 即不整除，
+  # nls 报错被 tryCatch 吞成 NULL，整头动物静默跳过。此处额外追加 7 个只有
+  # 采食记录、无体重的日期（n_total=97, sum(valid)=90，97 %% 90 = 7 ≠ 0），
+  # 旧代码在该动物上完全不做 Gompertz 检查，新代码应正常标出第 70 天尖峰。
+  set.seed(29)
+  n <- 90
+  w <- 115 * exp(-2.3 * exp(-0.055 * (1:n))) * 1000
+  w[70] <- w[70] + 3000
+  days_main <- seq.Date(as.Date("2024-01-01"), by = "day", length.out = n)
+  days_extra <- seq.Date(as.Date("2024-03-31"), by = "day", length.out = 7)
+  dt <- data.table::data.table(
+    animal_id = "A001",
+    record_date = c(rep(days_main, each = 2), days_extra),
+    weight_g = c(rep(w, each = 2) + stats::rnorm(2 * n, 0, 50), rep(NA_real_, 7)),
+    feed_g = 2500,
+    device_type = "YANGXIANG"
+  )
+
+  result <- suppressWarnings(ZhenM_qc_weight_standard(dt, "national_standard",
+    config = list(national_standard = list(
+      use_gompertz = TRUE,
+      gompertz_mad_multiplier = 4,
+      test_weight_range = c(200, 20)
+    ))))
+
+  spike_date <- as.Date("2024-03-10")
+  expect_true(any(result$flag_Gompertz_WT & result$record_date == spike_date))
+})
+
 test_that("Gompertz handles insufficient data gracefully", {
   skip_if_not_installed("data.table")
 
