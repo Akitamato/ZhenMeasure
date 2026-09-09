@@ -245,8 +245,7 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
     result <- .apply_feed_lmm_correction(result, dt, ns_cfg, stack = run_lmm_stack)
   } else {
     # 跳过日级 LMM 校正，仅保留 6kg 日上限校验（保证各路径口径一致）
-    result[, flag_daily_feed_over_limit := !is.na(daily_feed_g) & daily_feed_g > 6000]
-    result[!is.na(daily_feed_g) & (daily_feed_g <= 0 | daily_feed_g > 6000), daily_feed_g := NA_real_]
+    result <- .finalize_daily_feed(result)
   }
   # =================================================
 
@@ -260,6 +259,23 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
   attr(result, "source_format") <- if (id_col == "ID") "original" else "new"
   
   result
+}
+
+#' 日级采食量出口校验（issue #21）
+#'
+#' 6kg (6000g) 为猪只单日采食量生理上限：超限天打标
+#' `flag_daily_feed_over_limit` 并置 NA（等插补）；≤0 的天同样置 NA。三条出口
+#' 路径（跳过 LMM / LMM 出口 / 无 feed 列提前返回）统一调用，避免口径漂移。
+#' 只做出口把关，不筛 LMM 训练样本。
+#'
+#' @param dt 日级表（含 daily_feed_g）
+#' @return 原地修改并返回 dt
+#' @keywords internal
+.finalize_daily_feed <- function(dt) {
+  dt[, flag_daily_feed_over_limit := !is.na(daily_feed_g) & daily_feed_g > 6000]
+  dt[!is.na(daily_feed_g) & (daily_feed_g <= 0 | flag_daily_feed_over_limit == TRUE),
+     daily_feed_g := NA_real_]
+  dt[]
 }
 
 #' Record-level feed intake correction by flag type (physics caps)
@@ -446,8 +462,9 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
   feed_col <- if ("feed_g" %in% names(raw_dt)) "feed_g" else if ("Feed_intake" %in% names(raw_dt)) "Feed_intake" else NULL
   
   if (is.null(feed_col)) {
-    # Return dt directly if feed intake column is missing
-    return(dt)
+    # 无 feed 列时跳过记录级纠正与 LMM，但出口校验仍要走（issue #21：原先直接
+    # return 使此路径缺少 flag_daily_feed_over_limit 列，与另两条出口口径不一致）
+    return(.finalize_daily_feed(dt))
   }
   
   # We do not exclude flag_feed_out_of_range, retaining this rule
@@ -652,12 +669,8 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
   }
 
   # ==== 4. 出口生理校验（对所有路径统一执行） ====
-  # 6kg (6000g) 为猪只单日采食量生理上限：超限天标记 flag_daily_feed_over_limit
-  # 并置 NA（等插补）；≤0 的天同样置 NA。此校验只做出口把关，不筛训练样本。
-  dt[, flag_daily_feed_over_limit := !is.na(daily_feed_g) & daily_feed_g > 6000]
-  dt[!is.na(daily_feed_g) & daily_feed_g <= 0, daily_feed_g := NA_real_]
-  dt[flag_daily_feed_over_limit == TRUE, daily_feed_g := NA_real_]
-  
+  dt <- .finalize_daily_feed(dt)
+
   # Clean temporary feature columns used in the process（台账列 lmm_correction_g 保留）
   cols_to_remove <- c("normal_feed_sum", "adg_g",
                       paste0("has_", err_flags), paste0("dur_", err_flags),

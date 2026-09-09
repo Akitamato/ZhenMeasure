@@ -190,6 +190,34 @@ test_that("Improved LMM fallback: duration-proportional compensation + ledger + 
   expect_true(is.na(res[animal_id == "A002" & record_date == d28, daily_feed_g]))
 })
 
+test_that("日级采食量出口校验三条路径统一（issue #21）", {
+  skip_if_not_installed("data.table")
+
+  # 1) 辅助函数本身：>6000 打标并置 NA，≤0 置 NA，正常值与 NA 不动
+  dt <- data.table::data.table(
+    animal_id = rep("A001", 5),
+    record_date = as.Date("2024-01-01") + 0:4,
+    daily_feed_g = c(5000, 7000, 0, -5, NA_real_)
+  )
+  out <- ZhenMeasure:::.finalize_daily_feed(dt)
+  expect_identical(out$flag_daily_feed_over_limit, c(FALSE, TRUE, FALSE, FALSE, FALSE))
+  expect_equal(out$daily_feed_g, c(5000, NA, NA, NA, NA))
+
+  # 2) 无 feed 列路径：跳过记录级纠正与 LMM，但出口校验仍执行
+  #    （修复前该路径直接 return dt，输出缺 flag_daily_feed_over_limit 列）
+  daily <- data.table::data.table(
+    animal_id = "A001", record_date = as.Date("2024-01-01"),
+    daily_feed_g = NA_real_
+  )
+  raw <- data.table::data.table(
+    animal_id = "A001", record_date = as.Date("2024-01-01"),
+    weight_g = 30000
+  )
+  res <- ZhenMeasure:::.apply_feed_lmm_correction(daily, raw)
+  expect_true("flag_daily_feed_over_limit" %in% names(res))
+  expect_false(any(res$flag_daily_feed_over_limit))
+})
+
 test_that("ZhenM_generate_qc_summary produces summary", {
   skip_if_not_installed("data.table")
 
