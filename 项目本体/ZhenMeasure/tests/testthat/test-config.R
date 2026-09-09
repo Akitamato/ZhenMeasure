@@ -38,3 +38,38 @@ test_that("ZhenM_merge_config merges user config", {
   expect_equal(merged$national_standard$weight_range, c(30, 130))
   expect_equal(merged$national_standard$feed_intake_range, c(0, 6))
 })
+
+test_that("ZhenM_merge_config warns on unknown keys (issue #17)", {
+  # 拼写错误键：告警且路径含节名
+  expect_warning(
+    merged <- ZhenM_merge_config(
+      list(national_standard = list(use_record_feed_corection = FALSE)),
+      "national_standard"),
+    "use_record_feed_corection"
+  )
+  # 未识别键不生效：读取处走默认值
+  expect_true(merged$national_standard$use_record_feed_correction)
+
+  # 未知顶层节同样告警
+  expect_warning(
+    ZhenM_merge_config(list(legacy = list(weight_threshold = 0.5)), "national_standard"),
+    "legacy"
+  )
+
+  # 合法键不告警
+  expect_silent(ZhenM_merge_config(
+    list(national_standard = list(weight_range = c(30, 130),
+                                  speed_zero_long_duration_sec = 600)),
+    "national_standard"))
+
+  # data.frame 叶子（fcr_ranges）不递归列名，不误报
+  expect_silent(ZhenM_merge_config(
+    list(national_standard = list(fcr_ranges = data.frame(weight_min = 30, weight_max = 40))),
+    "national_standard"))
+
+  # 嵌套路径：未知子树整体报出（不深入未知的下层）
+  expect_warning(
+    ZhenM_merge_config(list(national_standard = list(gompertz = list(foo = 1))), "national_standard"),
+    "national_standard.gompertz"
+  )
+})

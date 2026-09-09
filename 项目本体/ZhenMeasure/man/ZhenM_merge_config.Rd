@@ -12,7 +12,8 @@ ZhenM_merge_config(user_config = NULL, qc_method = "national_standard")
 \item{qc_method}{QC method (always "national_standard" since V1.0.0)}
 }
 \value{
-Merged configuration
+Merged configuration。用户配置中存在默认值没有的键时发出
+  warning（很可能是拼写错误，该键不会生效）——issue #17。
 }
 \description{
 Merge user config with defaults

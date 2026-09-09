@@ -70,6 +70,10 @@ ZhenM_default_config <- function(qc_method = "national_standard") {
     # 校正机制开关：默认均为 TRUE（= 现状行为）。关闭记录级物理纠正后回退
     # 「置零」路径；关闭日级 LMM 兜底后仅保留 6kg 日上限校验。用于校正机制
     # 消融实验（issue #5）与后续锚点修复的对照评测。
+    # 三开关依赖关系（issue #17）：
+    #   use_lmm_feed_correction=TRUE 仅在记录级纠正「关闭或失败」时兜底运行；
+    #   记录级纠正成功且 use_lmm_stacking=FALSE 时，LMM 不运行（V1.1.1 起
+    #   兜底设计，避免对已纠正记录二次校正）——此时该开关为空操作。
     use_record_feed_correction = TRUE,
     use_lmm_feed_correction = TRUE,
 
@@ -96,16 +100,54 @@ ZhenM_default_config <- function(qc_method = "national_standard") {
   base_config
 }
 
+#' Collect key paths in user config that are absent from defaults
+#'
+#' issue #17：modifyList 不校验键名，拼写错误的键会被静默塞进 config，
+#' 读取处命中 NULL 走默认值。此助手递归比对（仅普通 list 递归，
+#' data.frame 按叶子处理避免列名误报），返回形如
+#' "national_standard.use_record_feed_corection" 的未知键路径。
+#'
+#' @param default 默认配置（键的权威来源）
+#' @param user 用户配置
+#' @param prefix 递归用路径前缀
+#' @return 字符向量；无未知键时为空
+#' @keywords internal
+.unknown_config_keys <- function(default, user, prefix = "") {
+  unknown <- character(0)
+  for (nm in names(user)) {
+    path <- if (prefix == "") nm else paste(prefix, nm, sep = ".")
+    if (!nm %in% names(default)) {
+      unknown <- c(unknown, path)
+    } else {
+      d <- default[[nm]]
+      u <- user[[nm]]
+      if (is.list(d) && !is.data.frame(d) && is.list(u) && !is.data.frame(u)) {
+        unknown <- c(unknown, .unknown_config_keys(d, u, path))
+      }
+    }
+  }
+  unknown
+}
+
 #' Merge user config with defaults
 #'
 #' @param user_config User-provided configuration list
 #' @param qc_method QC method (always "national_standard" since V1.0.0)
-#' @return Merged configuration
+#' @return Merged configuration。用户配置中存在默认值没有的键时发出
+#'   warning（很可能是拼写错误，该键不会生效）——issue #17。
 #' @keywords internal
 ZhenM_merge_config <- function(user_config = NULL, qc_method = "national_standard") {
   default <- ZhenM_default_config(qc_method)
 
   if (is.null(user_config)) return(default)
+
+  unknown_keys <- .unknown_config_keys(default, user_config)
+  if (length(unknown_keys) > 0) {
+    warning(paste0(
+      "config 中存在未识别的键（可能是拼写错误，将不会生效）: ",
+      paste(unknown_keys, collapse = ", ")
+    ), call. = FALSE)
+  }
 
   utils::modifyList(default, user_config)
 }
