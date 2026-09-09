@@ -4,7 +4,13 @@
 \alias{.read_tabular_file}
 \title{Read one tabular source file by extension}
 \usage{
-.read_tabular_file(file)
+.read_tabular_file(file, xlsx_skip = 2L)
+}
+\arguments{
+\item{file}{文件路径}
+
+\item{xlsx_skip}{xlsx 表头前跳过行数（issue #16：可由调用方按 format 文件
+header_skip 传入；FIRE 历史 2）}
 }
 \description{
 Read one tabular source file by extension

@@ -41,6 +41,7 @@ ZhenM_default_config <- function(qc_method = "national_standard") {
     speed_max = 170,
     speed_extreme = 500,
     feed_extreme_threshold = 50,
+    speed_zero_long_duration_sec = 500,
 
     # Imputation
     impute_r2_min = 0.95,

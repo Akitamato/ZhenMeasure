@@ -369,7 +369,10 @@ ZhenM_convert_nedap_to_standard <- function(data_path, format_path, birth_info_p
     stop("No csv/txt/xls/xlsx files found in NEDAP data directory", call. = FALSE)
   }
 
-  all_data <- lapply(files, .read_tabular_file)
+  all_data <- lapply(files, function(f) {
+    # issue #16：xlsx 表头跳过行数接 format 文件 header_skip（缺省 2，历史行为）
+    .read_tabular_file(f, xlsx_skip = .format_header_skip(format_info, default = 2))
+  })
   dt <- data.table::rbindlist(all_data, use.names = TRUE, fill = TRUE)
 
   birth_info <- NULL
@@ -400,7 +403,10 @@ ZhenM_convert_fire_to_standard <- function(data_path, format_path, birth_info_pa
     stop("No csv/txt/xls/xlsx files found in FIRE data directory", call. = FALSE)
   }
 
-  all_data <- lapply(files, .read_tabular_file)
+  all_data <- lapply(files, function(f) {
+    # issue #16：xlsx 表头跳过行数接 format 文件 header_skip（缺省 2，历史行为）
+    .read_tabular_file(f, xlsx_skip = .format_header_skip(format_info, default = 2))
+  })
   dt <- data.table::rbindlist(all_data, use.names = TRUE, fill = TRUE)
 
   birth_info <- NULL

@@ -138,13 +138,30 @@ ZhenM_attach_measurement_day <- function(dt) {
   id_col <- if (!is.null(field_map$ID)) field_map$ID$position else NA_integer_
   if (is.na(id_col) && length(type_map$character_cols) > 0) id_col <- type_map$character_cols[1]
 
+  # issue #16：可选键 header_skip——表头前的跳过行数（xlsx），缺省由各读取端自定
   list(
     id_col = id_col,
     character_cols = if (!is.null(type_map$character_cols)) type_map$character_cols else integer(0),
     numeric_cols = if (!is.null(type_map$numeric_cols)) type_map$numeric_cols else integer(0),
     date_cols = if (!is.null(type_map$date_cols)) type_map$date_cols else integer(0),
-    field_map = field_map
+    field_map = field_map,
+    header_skip = cfg$header_skip
   )
+}
+
+#' 读取 format 配置的表头跳过行数（可选键 header_skip）
+#'
+#' @param format_info format 文件解析结果
+#' @param default format 文件未提供 header_skip 时使用的默认值（扬翔 1、FIRE/NEDAP 2）
+#' @return 非负整数行数；header_skip 无效时告警并回退 default
+#' @keywords internal
+.format_header_skip <- function(format_info, default) {
+  if (!is.null(format_info$header_skip)) {
+    n <- suppressWarnings(as.integer(format_info$header_skip))
+    if (length(n) >= 1 && !is.na(n[1]) && n[1] >= 0) return(n[1])
+    warning(sprintf("format 文件 header_skip 无效（需非负整数），回退默认 %s", default), call. = FALSE)
+  }
+  as.integer(default)
 }
 
 #' Unit conversion helper function
@@ -206,13 +223,15 @@ ZhenM_attach_measurement_day <- function(dt) {
 #' Read single YANGXIANG xlsx file
 #' @keywords internal
 .read_yangxiang_file <- function(file, format_info) {
+  # issue #16：表头跳过行数可由 format 文件 header_skip 配置，默认 1（历史行为）
+  hdr_skip <- .format_header_skip(format_info, default = 1)
   # Read with all text columns first
-  tmp <- readxl::read_xlsx(file, sheet = 1, n_max = 0, skip = 1)
+  tmp <- readxl::read_xlsx(file, sheet = 1, n_max = 0, skip = hdr_skip)
   n_col <- ncol(tmp)
   col_types <- rep("text", n_col)
 
   raw <- data.table::as.data.table(
-    readxl::read_xlsx(file, sheet = 1, col_types = col_types, skip = 1)
+    readxl::read_xlsx(file, sheet = 1, col_types = col_types, skip = hdr_skip)
   )
 
   raw[, source_file := basename(file)]
@@ -300,13 +319,15 @@ ZhenM_attach_measurement_day <- function(dt) {
 }
 
 #' Read one tabular source file by extension
+#'
+#' @param file 文件路径
+#' @param xlsx_skip xlsx 表头前跳过行数（issue #16：可由调用方按 format 文件
+#'   header_skip 传入；FIRE 历史 2）
 #' @keywords internal
-.read_tabular_file <- function(file) {
+.read_tabular_file <- function(file, xlsx_skip = 2L) {
   file_lower <- tolower(file)
   if (grepl("\\.(xls|xlsx)$", file_lower)) {
-    # read FIRE raw data, skip = 2 means skip first 2 rows of header is was required from FIRE format
-    # it is a potential point of failure if the format changes, may need to make it configurable in the future.
-    return(data.table::as.data.table(readxl::read_excel(file, sheet = 1, na = "", skip = 2))) 
+    return(data.table::as.data.table(readxl::read_excel(file, sheet = 1, na = "", skip = xlsx_skip)))
   }
   # Read text files as character to avoid aggressive type guessing
   # (e.g., datetime columns coerced to all-NA under mixed formats).

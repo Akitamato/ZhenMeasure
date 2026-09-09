@@ -444,3 +444,28 @@ test_that("daily_weight_threshold is honored from config (issue #14)", {
   expect_true(all(r_hi[record_date == as.Date("2024-01-08"), flag_daily_weight_low]))
   expect_false(any(r_lo[record_date == as.Date("2024-01-08"), flag_daily_weight_low]))
 })
+
+test_that("speed_zero_long_duration threshold is configurable (issue #16)", {
+  skip_if_not_installed("data.table")
+
+  mk <- function() {
+    data.table::data.table(
+      animal_id = "A001",
+      record_date = as.Date("2024-01-01"),
+      feed_g = c(0, 100),        # QC 内部重算 feed_speed = feed_g/时长 → 第 1 条 speed=0
+      duration_sec = c(600, 600),
+      weight_g = c(60000, 60000)
+    )
+  }
+  base <- ZhenM_merge_config(list(national_standard = list()))
+
+  # 默认阈值 500s：speed=0 且 600s 记录被标中
+  r1 <- ZhenM_qc_feed_standard(mk(), "national_standard", base)
+  expect_true(r1$flag_speed_zero_long_duration[1])
+  expect_false(r1$flag_speed_zero_long_duration[2])
+
+  # 阈值放宽到 700s：同一条记录不再被标中
+  r2 <- ZhenM_qc_feed_standard(mk(), "national_standard",
+    ZhenM_merge_config(list(national_standard = list(speed_zero_long_duration_sec = 700))))
+  expect_false(r2$flag_speed_zero_long_duration[1])
+})

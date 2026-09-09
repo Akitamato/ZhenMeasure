@@ -77,8 +77,10 @@ ZhenM_qc_feed_standard <- function(standard_records, qc_method = "national_stand
        feed_g > 0 & feed_g < cfg$national_standard$feed_extreme_threshold]
   
   # 7. Speed zero with long duration
+  # issue #16：阈值接入 config（原写死 500 秒）
   dt[!is.na(feed_speed) & !is.na(duration_sec),
-     flag_speed_zero_long_duration := feed_speed == 0 & duration_sec > 500]
+     flag_speed_zero_long_duration := feed_speed == 0 &
+       duration_sec > cfg$national_standard$speed_zero_long_duration_sec]
   
 
   # 9. Feed negative

@@ -106,3 +106,17 @@ test_that(".map_daily_values_to_records aligns with unsorted idx (issue #15)", {
   expect_identical(as.numeric(out2$val), c(10, NA))
   expect_identical(nrow(out2), 2L)
 })
+
+test_that(".format_header_skip reads optional header_skip from format info (issue #16)", {
+  # 缺省：format 文件未提供 → 默认值（扬翔 1 / FIRE-NEDAP 2 的历史行为）
+  expect_identical(ZhenMeasure:::.format_header_skip(list(), default = 1), 1L)
+  expect_identical(ZhenMeasure:::.format_header_skip(list(header_skip = NULL), default = 2), 2L)
+  # 覆盖：format 文件提供 header_skip
+  expect_identical(ZhenMeasure:::.format_header_skip(list(header_skip = 3), default = 2), 3L)
+  expect_identical(ZhenMeasure:::.format_header_skip(list(header_skip = "0"), default = 1), 0L)
+  # 无效：告警并回退默认
+  expect_warning(got <- ZhenMeasure:::.format_header_skip(list(header_skip = -1), default = 2))
+  expect_identical(got, 2L)
+  expect_warning(got2 <- ZhenMeasure:::.format_header_skip(list(header_skip = "abc"), default = 1))
+  expect_identical(got2, 1L)
+})
