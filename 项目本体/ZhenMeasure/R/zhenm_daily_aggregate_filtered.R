@@ -432,7 +432,10 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
 #' @keywords internal
 .apply_feed_lmm_correction <- function(daily_dt, raw_dt, ns_cfg = NULL, stack = FALSE) {
   dt <- data.table::copy(daily_dt)
-  
+  # issue #30：下面要给 raw_dt 加 is_feed_normal_record 列，先 copy 避免按引用
+  # 改写调用方的表（与 daily_dt 的处理一致）
+  raw_dt <- data.table::copy(raw_dt)
+
   # 10 error flags for single record anomalies (including STL time series flag)
   err_flags <- c("flag_duration_negative", "flag_duration_too_long",
                  "flag_duration_zero_with_feed", "flag_speed_too_slow",

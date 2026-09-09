@@ -708,3 +708,29 @@ test_that("三个 QC 阶段的汇总行都能被 logger 捕获（issue #23）", 
   expect_true(any(grepl("^Weight QC \\(National-Standard\\):", lines)))
   expect_true(any(grepl("^Overall QC:", lines)))
 })
+
+test_that("LMM 校正不按引用改写调用方传入的 raw_dt（issue #30）", {
+  skip_if_not_installed("data.table")
+
+  raw <- data.table::data.table(
+    animal_id = "A001",
+    record_date = rep(as.Date("2024-01-01"), 2),
+    feed_g = c(100, 200),
+    duration_sec = c(60, 90),
+    is_outlier_feed = FALSE,
+    flag_feed_negative = FALSE,
+    flag_speed_too_fast = FALSE
+  )
+  daily <- data.table::data.table(
+    animal_id = "A001",
+    record_date = as.Date("2024-01-01"),
+    daily_feed_g = 300,
+    daily_weight_g = 50000
+  )
+  before <- names(raw)
+
+  invisible(ZhenMeasure:::.apply_feed_lmm_correction(daily, raw, ns_cfg = NULL))
+
+  expect_false("is_feed_normal_record" %in% names(raw))
+  expect_identical(names(raw), before)
+})
