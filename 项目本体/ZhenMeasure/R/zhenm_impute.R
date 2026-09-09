@@ -15,7 +15,7 @@
 #' result <- ZhenM_impute_data(daily_data, impute_method = "national_standard")
 #' }
 ZhenM_impute_data <- function(daily_records, impute_method = "national_standard", config = NULL) {
-  if (match.arg(impute_method, choices = "national_standard") != "national_standard") {
+  if (!identical(impute_method, "national_standard")) {
     stop("Legacy imputation method was removed in V1.0.0. Use 'national_standard'.", call. = FALSE)
   }
 

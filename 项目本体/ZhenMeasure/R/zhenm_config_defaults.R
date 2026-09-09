@@ -19,7 +19,7 @@
 #' # Get national standard config
 #' cfg <- ZhenM_default_config("national_standard")
 ZhenM_default_config <- function(qc_method = "national_standard") {
-  if (match.arg(qc_method, choices = "national_standard") != "national_standard") {
+  if (!identical(qc_method, "national_standard")) {
     stop("Legacy QC method was removed in V1.0.0. Use 'national_standard'.", call. = FALSE)
   }
 

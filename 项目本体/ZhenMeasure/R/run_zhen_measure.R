@@ -36,7 +36,7 @@ run_zhen_measure <- function(data_path, data_type, format_path,
                        growth_curve_test = FALSE,
                        log_file = NULL) {
 
-  if (match.arg(qc_method, choices = "national_standard") != "national_standard") {
+  if (!identical(qc_method, "national_standard")) {
     stop("Legacy QC method was removed in V1.0.0. Use 'national_standard'.", call. = FALSE)
   }
 

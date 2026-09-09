@@ -9,7 +9,27 @@ test_that("ZhenM_default_config returns correct structure", {
 })
 
 test_that("ZhenM_default_config errors on legacy method", {
-  expect_error(ZhenM_default_config("legacy"))
+  # issue #28：原用 match.arg(choices="national_standard")，非匹配参数会被 match.arg
+  # 先抛出，友好迁移提示永远不可达。改为 identical 后必须给出可读提示。
+  expect_error(ZhenM_default_config("legacy"), "Legacy QC method was removed in V1.0.0")
+})
+
+test_that("legacy removal message is reachable in all three entry points (issue #28)", {
+  skip_if_not_installed("data.table")
+  expect_error(ZhenM_default_config("legacy"), "Legacy QC method was removed in V1.0.0")
+  expect_error(
+    ZhenM_impute_data(
+      data.table::data.table(animal_id = "A", record_date = as.Date("2024-01-01"),
+                             daily_feed_g = 1, daily_weight_g = 1),
+      impute_method = "legacy"
+    ),
+    "Legacy imputation method was removed in V1.0.0"
+  )
+  expect_error(
+    run_zhen_measure(data_path = "/nonexistent", data_type = "FIRE", format_path = "x",
+                     output_dir = tempdir(), qc_method = "legacy"),
+    "Legacy QC method was removed in V1.0.0"
+  )
 })
 
 test_that("national_standard config has required parameters", {
