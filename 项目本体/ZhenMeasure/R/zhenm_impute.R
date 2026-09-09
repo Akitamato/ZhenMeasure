@@ -75,12 +75,12 @@ ZhenM_impute_feed <- function(daily_records, impute_method = "national_standard"
     # The StructTS (Structural Time Series) model is excellent at capturing local trends
     # without exploding into massive negative/positive infinity like Cubic Splines do.
     y_interp <- tryCatch({
-      # Try Kalman Smoothing
-      # Structural models need at least a few points to guess the level/trend
-      if (sum(!is.na(y)) >= 4 && requireNamespace("imputeTS", quietly = TRUE)) {
+      # Try Kalman Smoothing。数据充足性（>= 4 个有效点）已由上面的 next 守卫保证
+      # （issue #31：原处重复检查同一条件，易误读为语义不同）
+      if (requireNamespace("imputeTS", quietly = TRUE)) {
         suppressWarnings(imputeTS::na_kalman(y, model = "StructTS"))
       } else {
-        # Fallback if library missing or sequence too short
+        # Fallback if library missing
         zoo::na.approx(y, x, na.rm = FALSE, rule = 2)
       }
     }, error = function(e) {

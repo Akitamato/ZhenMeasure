@@ -85,6 +85,26 @@ test_that("weight imputation never overwrites observed weights (issue #26)", {
   expect_false(any(is.na(res$daily_weight_g)))
 })
 
+test_that("weight imputation still runs at the minimum 4 valid points (issue #31)", {
+  skip_if_not_installed("data.table")
+  skip_if_not_installed("zoo")
+
+  # 守卫 sum(!is.na(y)) >= 4 已由 next 保证；本用例锁定该边界：
+  # 恰好 4 个有效点时仍必须完成插补（无论走 Kalman 还是 na.approx 回退）
+  n <- 10
+  dt <- data.table::data.table(
+    animal_id = "A001",
+    record_date = seq.Date(as.Date("2024-01-01"), by = "day", length.out = n),
+    daily_weight_g = 30000 + 700 * seq_len(n)
+  )
+  dt[c(2, 4, 6, 8, 10, 1), daily_weight_g := NA]  # 仅 2,3,5,7 有效 → 4 个有效点
+
+  res <- ZhenMeasure:::.impute_weight_national(data.table::copy(dt), ZhenM_default_config("national_standard"))
+
+  expect_false(any(is.na(res$daily_weight_g)))
+  expect_equal(sum(res$is_imputed_wt), 6L)
+})
+
 test_that("feed imputation is invariant to input row order (issue #8)", {
   skip_if_not_installed("data.table")
   skip_if_not_installed("zoo")
