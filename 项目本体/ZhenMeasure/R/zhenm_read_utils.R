@@ -15,10 +15,24 @@ ZhenM_list_source_files <- function(data_path, patterns) {
   result[!birth_like]
 }
 
+#' 附加「测定天数」列（measurement_day 的唯一口径定义，issue #23）
+#'
+#' 口径：每条记录属于该个体「测定的第几天」——首条有效记录为 1，逐日递增
+#' （即 `record_date - 该头首个 record_date + 1`）。日期缺失的记录为 NA；
+#' 整头无有效日期的个体整列为 NA。
+#'
+#' `ZhenM_validate_standard_records()` 直接调用本函数，读取路径与 schema 校验
+#' 共用同一定义（此前 schema 侧按「首末日跨度 max-min」计算，得每头一个常数，
+#' 与列名语义不符，且与 phenotype 里把它当时间轴的用法相矛盾）。
+#'
+#' @param dt 标准记录表（需含 animal_id / record_date）
+#' @return 附加/覆盖 measurement_day 后的 dt
+#' @keywords internal
 ZhenM_attach_measurement_day <- function(dt) {
   if (!data.table::is.data.table(dt)) dt <- data.table::as.data.table(dt)
   if (!"record_date" %in% names(dt)) return(dt)
 
+  dt[, measurement_day := NA_real_]
   first_day <- dt[!is.na(record_date), .(first_date = min(record_date, na.rm = TRUE)), by = animal_id]
   dt[first_day, on = "animal_id", measurement_day := as.numeric(record_date - i.first_date) + 1]
   dt
@@ -290,16 +304,19 @@ ZhenM_attach_measurement_day <- function(dt) {
   if (grepl("\\.(xls|xlsx)$", file_lower)) {
     return(data.table::as.data.table(readxl::read_excel(file, sheet = 1, na = "", skip = xlsx_skip)))
   }
-  # Read text files as character to avoid aggressive type guessing
-  # (e.g., datetime columns coerced to all-NA under mixed formats).
-  # read NEDAP raw data
+  # 文本文件一律按字符读入（issue #23 记录设计取舍）：
+  # fread 的类型推断在「同一列混有多种日期格式」或「ID 列前导零」时会误判，
+  # 最坏情况把整列 datetime 推成全 NA（NEDAP/FIRE 历史数据均出现过），且错误
+  # 静默不可恢复。代价是读入阶段内存约为数值型的 2 倍，换来的是列内容保真；
+  # 后续各读取器按 format 文件的列类型定义显式转换（as.numeric / .parse_temporal）。
+  # 因此此处刻意保留 colClasses = "character"，不做自动类型推断。
   data.table::fread(
     file,
     header = TRUE,
     stringsAsFactors = FALSE,
     colClasses = "character"
-  ) 
-  
+  )
+
 }
 
 #' Read birth info file

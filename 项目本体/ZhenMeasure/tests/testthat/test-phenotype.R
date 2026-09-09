@@ -265,3 +265,31 @@ test_that("日期有缺口时 ADG 以日历天数为分母（issue #19）", {
   # 修复前：record_index 口径 → 9000/3 = 3000 g/天（高估）
   expect_equal(result[["30-40kg_ADG"]], 1800)
 })
+
+test_that("无 age_day 时以 measurement_day 为时间轴算阶段 ADG（issue #23）", {
+  skip_if_not_installed("data.table")
+
+  # 100 天，逐日增重 900 g；无 age_day，只有 measurement_day
+  dt <- data.table::data.table(
+    animal_id = "A001",
+    record_date = as.Date("2024-01-01") + 0:99,
+    daily_feed_g = 2000,
+    median_weight_g = 30000 + 900 * (0:99),
+    age_day = NA_real_,
+    measurement_day = 1:100
+  )
+
+  res <- ZhenM_calc_phenotypes_stage(
+    dt, stage_mode = "weight",
+    target_weight_stages = list("30-40kg" = c(30000, 40000)))
+
+  # 新口径（逐记录天数索引）→ 时间差 11 天，ADG = 9900/11 = 900
+  expect_equal(res[["30-40kg_ADG"]], 900)
+
+  # 旧口径（每头常数「首末日跨度」）时间差恒为 0，ADG 退化为 NA
+  dt_const <- data.table::copy(dt)[, measurement_day := 99]
+  res_const <- ZhenM_calc_phenotypes_stage(
+    dt_const, stage_mode = "weight",
+    target_weight_stages = list("30-40kg" = c(30000, 40000)))
+  expect_true(is.na(res_const[["30-40kg_ADG"]]))
+})

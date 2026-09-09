@@ -50,3 +50,17 @@ test_that("ZhenM_write_plot_outputs creates combined and per-animal PDFs", {
   expect_true(length(plot_files) >= 2)
   expect_true(any(grepl("growth_curves.pdf$", plot_files)))
 })
+
+test_that(".with_pdf_device 报错时也关闭设备（issue #23）", {
+  helper <- getFromNamespace(".with_pdf_device", "ZhenMeasure")
+  tmp_pdf <- tempfile(fileext = ".pdf")
+
+  dev_before <- grDevices::dev.cur()
+  expect_error(helper(tmp_pdf, stop("boom")), "boom")
+  expect_equal(grDevices::dev.cur(), dev_before)
+  expect_true(file.exists(tmp_pdf))
+
+  # 正常路径：表达式执行后设备同样被关闭
+  helper(tmp_pdf, graphics::plot(1:3, 1:3))
+  expect_equal(grDevices::dev.cur(), dev_before)
+})

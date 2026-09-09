@@ -631,3 +631,58 @@ test_that("连续性检查只保留最长合格段（issue #22 非等值 join �
   expect_equal(max(kept$record_date), as.Date("2024-01-25"))
   expect_equal(res$summary[step == "continuity_removed_records", n_removed], 5)
 })
+
+test_that("汇总行走 logger 落盘，无 logger 时仍走 message（issue #23）", {
+  skip_if_not_installed("data.table")
+
+  helpers <- ZhenMeasure:::.create_logger_helpers
+  seen <- character(0)
+  logger <- list(
+    info = function(msg) seen <<- c(seen, paste0("info:", msg)),
+    detail = function(msg) seen <<- c(seen, paste0("detail:", msg)),
+    subsection = function(msg) NULL
+  )
+
+  # 有 logger：汇总行进 detail（控制台 + 日志文件），不再单独 message
+  expect_silent(helpers(logger)$log_summary("hello"))
+  expect_equal(seen, "detail:hello")
+
+  # 无 logger：保持原有 message 输出，控制台可见性不变
+  expect_message(helpers(NULL)$log_summary("world"), "world")
+})
+
+test_that("三个 QC 阶段的汇总行都能被 logger 捕获（issue #23）", {
+  skip_if_not_installed("data.table")
+
+  dt <- data.table::data.table(
+    animal_id = rep("A001", 12),
+    device_type = "YANGXIANG",
+    record_date = rep(seq.Date(as.Date("2024-01-01"), by = "day", length.out = 12), each = 1),
+    feed_g = rep(c(300, 400, 350, 380), 3),
+    duration_sec = rep(c(300, 400, 350, 380), 3),
+    weight_g = rep(seq(30000, 46000, length.out = 12)),
+    age_day = seq(70, 81)
+  )
+
+  lines <- character(0)
+  logger <- list(
+    info = function(msg) lines <<- c(lines, msg),
+    detail = function(msg) lines <<- c(lines, msg),
+    subsection = function(msg) NULL
+  )
+
+  invisible(ZhenM_qc_feed_standard(dt, "national_standard", logger = logger))
+  # 权重序列为等距线性，二次项退化会让 RLM 报收敛告警；本用例只验证汇总行落盘
+  invisible(suppressWarnings(ZhenM_qc_weight_standard(dt, "national_standard", logger = logger)))
+  # 阈值放宽，避免个体因完整度不足被剔除（剔除后走提前返回分支，不发汇总行）
+  invisible(ZhenM_qc_overall(
+    dt,
+    config = list(national_standard = list(min_test_days = 3, max_missing_rate = 0.9)),
+    min_segment_days = 3,
+    logger = logger
+  ))
+
+  expect_true(any(grepl("^Feed QC \\(National-Standard\\):", lines)))
+  expect_true(any(grepl("^Weight QC \\(National-Standard\\):", lines)))
+  expect_true(any(grepl("^Overall QC:", lines)))
+})

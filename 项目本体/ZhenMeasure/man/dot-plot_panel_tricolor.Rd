@@ -7,6 +7,6 @@
 .plot_panel_tricolor(x, y, flag_imputed, flag_outlier, main, xlab, ylab)
 }
 \description{
-Color scheme: #f5616f = QC Removed, #f5616f = Partial Anomaly, black = Normal
+Color scheme: #f5616f = QC Removed, #f7b13f = Partial Anomaly, black = Normal
 }
 \keyword{internal}

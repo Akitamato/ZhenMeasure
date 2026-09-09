@@ -166,17 +166,17 @@ ZhenM_write_plot_outputs <- function(result, output_dir, growth_curve = FALSE,
   # Combined PDF (growth_curve_test)
   if (growth_curve_test) {
     combined_file <- file.path(output_dir, "growth_curves.pdf")
-    grDevices::pdf(combined_file, width = 15, height = 10)
-
-    for (id in animal_ids) {
-      .plot_animal_2x2(
-        raw_sub = raw_daily[animal_id == id],
-        daily_sub = daily_data[animal_id == id],
-        animal_id = id
-      )
-    }
-
-    grDevices::dev.off()
+    # issue #23：绘图设备由 .with_pdf_device() 打开并在退出时保证关闭，
+    # 中途报错不再残留打开的 PDF 设备
+    .with_pdf_device(combined_file, {
+      for (id in animal_ids) {
+        .plot_animal_2x2(
+          raw_sub = raw_daily[animal_id == id],
+          daily_sub = daily_data[animal_id == id],
+          animal_id = id
+        )
+      }
+    })
     output_files <- c(output_files, combined_file)
     message(paste0("  Written: growth_curves.pdf (", length(animal_ids), " animals)"))
   }
@@ -193,13 +193,11 @@ ZhenM_write_plot_outputs <- function(result, output_dir, growth_curve = FALSE,
     for (id in animal_ids) {
       safe_id <- gsub("[/\\\\:*?\"<>|]", "_", as.character(id))
       pdf_file <- file.path(curves_dir, paste0(safe_id, ".pdf"))
-      grDevices::pdf(pdf_file, width = 15, height = 10)
-      .plot_animal_2x2(
+      .with_pdf_device(pdf_file, .plot_animal_2x2(
         raw_sub = raw_daily[animal_id == id],
         daily_sub = daily_data[animal_id == id],
         animal_id = id
-      )
-      grDevices::dev.off()
+      ))
       output_files <- c(output_files, pdf_file)
     }
 
@@ -209,11 +207,29 @@ ZhenM_write_plot_outputs <- function(result, output_dir, growth_curve = FALSE,
   invisible(output_files)
 }
 
+#' 在 PDF 设备上执行绘图表达式并保证设备关闭（issue #23）
+#'
+#' `grDevices::pdf()` 与 `dev.off()` 分离书写时，中间报错会残留打开的绘图设备、
+#' 产出损坏的 PDF 文件。此辅助函数用 `on.exit()` 保证设备无论正常结束还是报错
+#' 都会被关闭。
+#'
+#' @param file PDF 输出路径
+#' @param expr 绘图表达式（惰性求值，在调用方环境中执行）
+#' @param width,height 画布尺寸（英寸）
+#' @return 不可见地返回文件路径
+#' @keywords internal
+.with_pdf_device <- function(file, expr, width = 15, height = 10) {
+  grDevices::pdf(file, width = width, height = height)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  force(expr)
+  invisible(file)
+}
+
 #' Plot single animal with 2x2 panel layout
 #'
 #' Row 1: Raw daily data (original before QC)
-#'   Left: record_date vs daily_feed_g (#f5616f=QC Removed, #f5616f=Partial Anomaly, black=Normal)
-#'   Right: record_date vs daily_weight_g (#f5616f=QC Removed, #f5616f=Partial Anomaly, black=Normal)
+#'   Left: record_date vs daily_feed_g (#f5616f=QC Removed, #f7b13f=Partial Anomaly, black=Normal)
+#'   Right: record_date vs daily_weight_g (#f5616f=QC Removed, #f7b13f=Partial Anomaly, black=Normal)
 #' Row 2: Cleaned daily data (after QC and imputation)
 #'   Left: record_date vs daily_feed_g (green triangle=Imputed, #3685fe circle=Corrected, black circle=Normal)
 #'   Right: record_date vs daily_weight_g (green triangle=Imputed, #3685fe circle=Corrected, black circle=Normal)
@@ -301,7 +317,7 @@ ZhenM_write_plot_outputs <- function(result, output_dir, growth_curve = FALSE,
 
 #' Plot panel with three-color classification (original data)
 #'
-#' Color scheme: #f5616f = QC Removed, #f5616f = Partial Anomaly, black = Normal
+#' Color scheme: #f5616f = QC Removed, #f7b13f = Partial Anomaly, black = Normal
 #'
 #' @keywords internal
 .plot_panel_tricolor <- function(x, y, flag_imputed, flag_outlier,

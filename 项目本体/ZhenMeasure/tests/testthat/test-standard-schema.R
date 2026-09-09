@@ -16,6 +16,46 @@ test_that("ZhenM_validate_standard_records normalizes standard columns", {
   expect_true(all(c("start_time", "measurement_day") %in% names(result)))
 })
 
+test_that("measurement_day 是逐记录的测定天数索引（issue #23）", {
+  dt <- data.table::data.table(
+    animal_id = c("1001", "1001", "1001", "1002", "1002"),
+    device_type = "NEDAP",
+    record_date = as.Date(c("2026-01-01", "2026-01-03", "2026-01-03", "2026-02-01", "2026-02-03")),
+    feed_g = 100,
+    weight_g = 30000,
+    age_day = NA_real_
+  )
+
+  result <- ZhenM_validate_standard_records(dt)
+
+  # 首条有效记录 = 1，逐日递增；同日多记录同值
+  expect_equal(result[animal_id == "1001", measurement_day], c(1, 3, 3))
+  expect_equal(result[animal_id == "1002", measurement_day], c(1, 3))
+  # 旧口径为「首末日跨度」常数（1001 恒为 2），此处显式排除
+  expect_false(identical(unique(result[animal_id == "1001", measurement_day]), 2))
+
+  # 与唯一口径定义 ZhenM_attach_measurement_day() 完全一致
+  direct <- ZhenMeasure:::ZhenM_attach_measurement_day(data.table::copy(dt))
+  ord <- function(x) x[order(animal_id, record_date)]
+  expect_equal(ord(result)$measurement_day, ord(direct)$measurement_day)
+})
+
+test_that("record_date 缺失的测定天数为 NA（issue #23）", {
+  dt <- data.table::data.table(
+    animal_id = c("1001", "1001"),
+    device_type = "NEDAP",
+    record_date = as.Date(c("2026-01-01", NA)),
+    feed_g = 100,
+    weight_g = 30000,
+    age_day = NA_real_
+  )
+
+  result <- ZhenM_validate_standard_records(dt)
+
+  expect_equal(result$measurement_day[1], 1)
+  expect_true(is.na(result$measurement_day[is.na(result$record_date)]))
+})
+
 test_that("ZhenM_standard_to_daily_filtered aggregates daily metrics", {
   dt <- data.table::data.table(
     animal_id = c("1001", "1001", "1002"),

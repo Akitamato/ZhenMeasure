@@ -177,7 +177,7 @@ ZhenM_qc_feed_standard <- function(standard_records, qc_method = "national_stand
   log_detail(paste0("flag_STL_FI: ", n_stl_fi))
   log_info(paste0("Feed QC completed: Total outliers flagged = ", n_total_outlier, " (", round(n_total_outlier/n_total*100, 2), "%)"))
 
-  message(sprintf("Feed QC (National-Standard): feed_negative=%d, feed_too_high=%d, duration_negative=%d, duration_too_long=%d, duration_zero=%d, speed_slow=%d, speed_fast=%d, speed_extreme=%d, speed_zero_long=%d, STL=%d. Total outliers=%d",
+  loggers$log_summary(sprintf("Feed QC (National-Standard): feed_negative=%d, feed_too_high=%d, duration_negative=%d, duration_too_long=%d, duration_zero=%d, speed_slow=%d, speed_fast=%d, speed_extreme=%d, speed_zero_long=%d, STL=%d. Total outliers=%d",
                   n_feed_negative, n_feed_too_high,
                   n_duration_negative, n_duration_too_long, n_duration_zero,
                   n_speed_slow, n_speed_fast, n_speed_extreme,

@@ -314,7 +314,7 @@ ZhenM_qc_weight_standard <- function(standard_records, qc_method = "national_sta
                     ", removed_animals: ", range_filter$removed_animals))
   log_info(paste0("Weight QC complete: Total abnormal records flagged ", n_total_outlier, " (", outlier_pct, "%)"))
 
-  message(sprintf("Weight QC (National-Standard): out_of_range=%d, weight_low=%d, daily_wt_low=%d, growth_curve_poor=%d, Gompertz=%d, test_range_removed=%d. Total outliers=%d",
+  loggers$log_summary(sprintf("Weight QC (National-Standard): out_of_range=%d, weight_low=%d, daily_wt_low=%d, growth_curve_poor=%d, Gompertz=%d, test_range_removed=%d. Total outliers=%d",
                   n_out_of_range, n_weight_low, n_daily_wt_low,
                   n_growth_poor, n_gompertz_wt, range_filter$removed_records, n_total_outlier))
 

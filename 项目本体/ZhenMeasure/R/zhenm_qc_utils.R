@@ -13,8 +13,18 @@
         logger$detail(msg)
     },
     log_subsection = function(title) {
-      if (!is.null(logger) && is.list(logger) && "subsection" %in% names(logger)) 
+      if (!is.null(logger) && is.list(logger) && "subsection" %in% names(logger))
         logger$subsection(title)
+    },
+    # 汇总行（issue #23）：原先只用 message() 打印，日志文件里缺这几行；
+    # 有 logger 时改走 logger$detail()（控制台 + 日志文件），无 logger 时保持
+    # message() 输出，控制台可见性不变
+    log_summary = function(msg) {
+      if (!is.null(logger) && is.list(logger) && "detail" %in% names(logger)) {
+        logger$detail(msg)
+      } else {
+        message(msg)
+      }
     }
   )
 }

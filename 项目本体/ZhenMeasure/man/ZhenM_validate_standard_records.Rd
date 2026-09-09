@@ -13,8 +13,9 @@ ZhenM_validate_standard_records(dt, strict = TRUE)
 }
 \value{
 A standardized table with missing fields filled and types converted.
-  Note: source_file column is removed, and measurement_day is calculated as
-  the number of days between first and last record_date for each animal_id.
+  Note: source_file column is removed, and measurement_day is the per-record
+  day index of the measurement period (first valid record_date = 1, then +1
+  per day; see `ZhenM_attach_measurement_day()`).
   Original columns (ID, Visit_time, etc.) are removed after mapping to avoid redundancy.
 }
 \description{

@@ -270,9 +270,10 @@ ZhenM_qc_overall <- function(
   log_info(paste0("Overall QC Completed: removed records ", total_removed, ", remaining records ", n_final))
   log_info(paste0("Remaining animals: ", n_final_animals))
 
-    message(sprintf("Overall QC: keep=%d, missing=%d, duplicate=%d, incomplete=%d, continuity=%d, logic_invalid=%d",
-          removed_keep_records, removed_missing, removed_duplicate, removed_incomplete_records,
-      continuity_removed_records, removed_logic_records))
+  loggers$log_summary(sprintf(
+    "Overall QC: keep=%d, missing=%d, duplicate=%d, incomplete=%d, continuity=%d, logic_invalid=%d",
+    removed_keep_records, removed_missing, removed_duplicate, removed_incomplete_records,
+    continuity_removed_records, removed_logic_records))
 
   list(
     records = dt,

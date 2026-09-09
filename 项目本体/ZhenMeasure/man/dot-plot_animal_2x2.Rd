@@ -8,8 +8,8 @@
 }
 \description{
 Row 1: Raw daily data (original before QC)
-  Left: record_date vs daily_feed_g (#f5616f=QC Removed, #f5616f=Partial Anomaly, black=Normal)
-  Right: record_date vs daily_weight_g (#f5616f=QC Removed, #f5616f=Partial Anomaly, black=Normal)
+  Left: record_date vs daily_feed_g (#f5616f=QC Removed, #f7b13f=Partial Anomaly, black=Normal)
+  Right: record_date vs daily_weight_g (#f5616f=QC Removed, #f7b13f=Partial Anomaly, black=Normal)
 Row 2: Cleaned daily data (after QC and imputation)
   Left: record_date vs daily_feed_g (green triangle=Imputed, #3685fe circle=Corrected, black circle=Normal)
   Right: record_date vs daily_weight_g (green triangle=Imputed, #3685fe circle=Corrected, black circle=Normal)

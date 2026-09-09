@@ -23,8 +23,9 @@ ZhenM_standard_record_fields <- function() {
 #' @param dt Data to validate.
 #' @param strict Whether at least one of age_day or measurement_day is required.
 #' @return A standardized table with missing fields filled and types converted.
-#'   Note: source_file column is removed, and measurement_day is calculated as
-#'   the number of days between first and last record_date for each animal_id.
+#'   Note: source_file column is removed, and measurement_day is the per-record
+#'   day index of the measurement period (first valid record_date = 1, then +1
+#'   per day; see `ZhenM_attach_measurement_day()`).
 #'   Original columns (ID, Visit_time, etc.) are removed after mapping to avoid redundancy.
 #' @export
 ZhenM_validate_standard_records <- function(dt, strict = TRUE) {
@@ -133,15 +134,11 @@ ZhenM_validate_standard_records <- function(dt, strict = TRUE) {
     }
   }
 
-  # 计算 measurement_day：每个 animal_id 的测定天数（从第一条到最后一条记录的天数）
-  dt[, measurement_day := {
-    valid_dates <- stats::na.omit(record_date)
-    if (length(valid_dates) > 0) {
-      as.numeric(max(valid_dates) - min(valid_dates))
-    } else {
-      NA_real_
-    }
-  }, by = animal_id]
+  # 计算 measurement_day：每条记录所属的「测定天数」（首条有效记录 = 1，逐日递增）
+  # issue #23：此前按「首末日跨度 max-min」计算，得到每头一个常数，与列名语义不符
+  # （下游 phenotype 把它当时间轴用，常数会让 ADG 的时间差恒为 0）。
+  # 现统一委托 ZhenM_attach_measurement_day()，读取路径与 schema 校验共用唯一定义。
+  dt <- ZhenM_attach_measurement_day(dt)
 
   if (!any(!is.na(dt$age_day)) && !any(!is.na(dt$measurement_day)) && strict) {
     stop("At least one of age_day or measurement_day is required at standard-record level.", call. = FALSE)

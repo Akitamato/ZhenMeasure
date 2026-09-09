@@ -468,8 +468,10 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
   }
   
   # We do not exclude flag_feed_out_of_range, retaining this rule
+  # issue #23：原用 .SD[[feed_col]] 会按组物化全部列再取一列；get(feed_col) 只取
+  # 目标列，结果相同（分组 j 内 get() 取到的即该组的目标列向量）
   daily_features <- raw_dt[, .(
-    normal_feed_sum = sum(.SD[[feed_col]][is_feed_normal_record == TRUE], na.rm = TRUE)
+    normal_feed_sum = sum(get(feed_col)[is_feed_normal_record == TRUE], na.rm = TRUE)
   ), by = .(animal_id, record_date)]
 
   dt <- merge(dt, daily_features, by = c("animal_id", "record_date"), all.x = TRUE)
