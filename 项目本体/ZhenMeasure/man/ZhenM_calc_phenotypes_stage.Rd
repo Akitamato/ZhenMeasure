@@ -18,7 +18,9 @@ ZhenM_calc_phenotypes_stage(
 
 \item{stage_mode}{Stage mode. Supported values are weight and age.}
 
-\item{target_weight_stages}{Weight stage definition.}
+\item{target_weight_stages}{Weight stage definition. 体重阶段区间为左闭右开
+\code{[min, max)}，恰好等于上界的记录归入下一阶段，与
+\code{ZhenM_calc_phenotypes(stage_mode = "weight")} 一致（issue #27）。}
 
 \item{target_age_stages}{Age stage definition.}
 

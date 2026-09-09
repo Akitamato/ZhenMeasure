@@ -37,7 +37,9 @@ daily_weight_g, daily_feed_g, age_days (required if stage_mode="age")}
 }}
 
 \item{target_weight_stages}{For stage_mode="weight": weight ranges in kg.
-Can be "YANGXIANG" (preset: 30-100, 30-115, 30-120kg) or numeric vector}
+Can be "YANGXIANG" (preset: 30-100, 30-115, 30-120kg) or numeric vector.
+区间约定为左闭右开 \code{[min, max)}：恰好等于上界的记录归入下一阶段，
+与 \code{ZhenM_calc_phenotypes_stage()} 及 \code{fcr_ranges} 一致（issue #27）。}
 
 \item{target_age_stages}{For stage_mode="age": age ranges in days.
 Numeric vector defining stage boundaries (e.g., c(70, 100, 130, 160))}

@@ -62,7 +62,9 @@ ZhenM_resolve_stage_ranges <- function(stage_mode, target_weight_stages, target_
 #'
 #' @param daily_records Daily-level data.
 #' @param stage_mode Stage mode. Supported values are weight and age.
-#' @param target_weight_stages Weight stage definition.
+#' @param target_weight_stages Weight stage definition. 体重阶段区间为左闭右开
+#'   \code{[min, max)}，恰好等于上界的记录归入下一阶段，与
+#'   \code{ZhenM_calc_phenotypes(stage_mode = "weight")} 一致（issue #27）。
 #' @param target_age_stages Age stage definition.
 #' @param target_phenotype Target phenotype set.
 #' @param data_type Device type for extra biological constraints.

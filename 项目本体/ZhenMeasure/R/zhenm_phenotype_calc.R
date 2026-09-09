@@ -21,7 +21,9 @@
 #'     \item "date": Partition by date ranges (requires target_date_stages)
 #'   }
 #' @param target_weight_stages For stage_mode="weight": weight ranges in kg.
-#'   Can be "YANGXIANG" (preset: 30-100, 30-115, 30-120kg) or numeric vector
+#'   Can be "YANGXIANG" (preset: 30-100, 30-115, 30-120kg) or numeric vector.
+#'   区间约定为左闭右开 \code{[min, max)}：恰好等于上界的记录归入下一阶段，
+#'   与 \code{ZhenM_calc_phenotypes_stage()} 及 \code{fcr_ranges} 一致（issue #27）。
 #' @param target_age_stages For stage_mode="age": age ranges in days.
 #'   Numeric vector defining stage boundaries (e.g., c(70, 100, 130, 160))
 #' @param target_date_stages For stage_mode="date": date ranges.
@@ -128,9 +130,12 @@ ZhenM_calc_phenotypes <- function(daily_records,
   dt[, weight_kg := daily_weight_g / 1000]
   
   # Calculate phenotypes for each stage
+  # 体重阶段统一为左闭右开 [min, max)（issue #27）：与 ZhenM_calc_phenotypes_stage()、
+  # config$national_standard$fcr_ranges 的 cut(right = FALSE)、日级 FCR 分档一致。
+  # 右闭会让相邻阶段（如 c(30,60,90,120) 下的 60kg 记录）同时落入两个阶段，造成重复计数。
   stage_results <- lapply(names(stage_ranges), function(stage_name) {
     range_kg <- stage_ranges[[stage_name]]
-    dt_stage <- dt[weight_kg >= range_kg[1] & weight_kg <= range_kg[2]]
+    dt_stage <- dt[weight_kg >= range_kg[1] & weight_kg < range_kg[2]]
     
     if (nrow(dt_stage) == 0) return(NULL)
     

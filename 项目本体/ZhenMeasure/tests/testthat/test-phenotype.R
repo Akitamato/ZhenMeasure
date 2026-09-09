@@ -88,6 +88,34 @@ test_that("weight stage mode partitions data correctly", {
   expect_true(nrow(result) >= 3)  # Should have at least 3 stages
 })
 
+test_that("weight stage boundaries are left-closed right-open, no double counting (issue #27)", {
+  skip_if_not_installed("data.table")
+
+  # 50/60/80/100kg 各一天，60kg 恰为相邻阶段 30-60 / 60-90 的边界
+  # （standard_fcr 内层按 test_weight_range 默认 45-110kg 过滤，故下界用 50kg）
+  dt <- data.table::data.table(
+    animal_id = "A001",
+    record_date = seq.Date(as.Date("2024-01-01"), by = "day", length.out = 4),
+    daily_weight_g = c(50000, 60000, 80000, 100000),
+    daily_feed_g = rep(2000, 4)
+  )
+
+  result <- ZhenM_calc_phenotypes(
+    dt,
+    phenotype_method = "standard_fcr",
+    stage_mode = "weight",
+    target_weight_stages = c(30, 60, 90, 120)
+  )
+  days <- stats::setNames(result$test_days, result$stage_label)
+
+  # 右开：60kg 归入 60-90kg，不重复落入 30-60kg
+  expect_equal(unname(days["30-60kg"]), 1)
+  expect_equal(unname(days["60-90kg"]), 2)
+  expect_equal(unname(days["90-120kg"]), 1)
+  # 四个观测日恰好被分配一次，无重复计数
+  expect_equal(sum(result$test_days), 4)
+})
+
 test_that("age stage mode requires age_days column", {
   skip_if_not_installed("data.table")
 
