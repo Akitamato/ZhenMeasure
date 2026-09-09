@@ -68,7 +68,7 @@ ZhenM_parse_data_format <- function(format_path) {
   if (!file.exists(format_path)) stop(paste0("Format file not found: ", format_path), call. = FALSE)
 
   if (grepl("\\.json$", format_path, ignore.case = TRUE)) {
-    if (!requireNamespace("jsonlite", quietly = TRUE)) stop("Need jsonlite package for parsing json format files.", call. = FALSE)
+    # jsonlite 为 Imports（issue #18）
     fmt <- jsonlite::fromJSON(format_path)
 
     make_seq <- function(x) {

@@ -27,13 +27,13 @@ Imports:
     utils,
     stats,
     lme4,
-    imputeTS
+    imputeTS,
+    jsonlite
 Suggests:
     testthat (>= 3.0.0),
     knitr,
     rmarkdown,
-    progress,
-    jsonlite
+    progress
 VignetteBuilder: knitr
 Config/testthat/edition: 3
 RoxygenNote: 7.3.3

@@ -35,10 +35,8 @@ ZhenM_attach_measurement_day <- function(dt) {
     stop("Only JSON format (.json) is supported for data format configuration.", call. = FALSE)
   }
 
-  if (!requireNamespace("jsonlite", quietly = TRUE)) {
-    stop("Reading JSON format file requires package 'jsonlite'. Please install it first.", call. = FALSE)
-  }
-
+  # jsonlite 为 Imports（issue #18）：.json 是唯一受支持的 format 格式，
+  # 依赖由 DESCRIPTION 保证，无需运行时软守卫
   parse_positions <- function(pos_str) {
     if (is.null(pos_str) || length(pos_str) == 0 || is.na(pos_str) || trimws(pos_str) == "") return(integer(0))
     vals <- suppressWarnings(as.integer(trimws(unlist(strsplit(as.character(pos_str), ",")))))

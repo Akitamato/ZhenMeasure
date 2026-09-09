@@ -120,3 +120,16 @@ test_that(".format_header_skip reads optional header_skip from format info (issu
   expect_warning(got2 <- ZhenMeasure:::.format_header_skip(list(header_skip = "abc"), default = 1))
   expect_identical(got2, 1L)
 })
+
+test_that("jsonlite 声明为 Imports 而非 Suggests（issue #18）", {
+  # .json 是唯一受支持的 format 格式（.read_shared_data_format_file 直接拒绝其他后缀），
+  # 读取路径硬依赖 jsonlite；若退回 Suggests，干净环境 install 后包能加载但读取必失败
+  desc_path <- system.file("DESCRIPTION", package = "ZhenMeasure")
+  skip_if(desc_path == "", "无法定位 DESCRIPTION")
+  desc <- read.dcf(desc_path)
+  imports <- if ("Imports" %in% colnames(desc)) desc[1, "Imports"] else ""
+  suggests <- if ("Suggests" %in% colnames(desc)) desc[1, "Suggests"] else ""
+  expect_true(grepl("jsonlite", imports, fixed = TRUE))
+  expect_false(grepl("jsonlite", suggests, fixed = TRUE))
+})
+
