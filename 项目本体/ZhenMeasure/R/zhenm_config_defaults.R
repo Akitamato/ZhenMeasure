@@ -5,6 +5,15 @@
 #'
 #' @param qc_method QC method: "national_standard" (the only supported method since V1.0.0)
 #' @return A list of configuration parameters
+#'
+#' @section `test_weight_range`（试验全量程筛选）:
+#' `national_standard$test_weight_range`（默认 `c(45, 110)` kg）采用
+#' **覆盖全量程** 口径，而不是区间包含过滤：只有「入栏体重 <= 下界 且
+#' 出栏体重 >= 上界」的个体才保留，不满足者整头删除（含其全部记录）。
+#' 因此入栏已超下界或出栏未达上界的正常个体也会被删除，且该规则对
+#' 全量程饲养试验之外的场景并不适用；实测三设备演示数据（默认口径）
+#' 分别删除 42% / 20% / 95% 的个体（issue #25）。
+#' 调试脚本中常见的 `c(200, 20)` 是反向区间，等效于关闭该筛选。
 #' @export
 #' @examples
 #' # Get national standard config
@@ -26,6 +35,11 @@ ZhenM_default_config <- function(qc_method = "national_standard") {
     weight_threshold = 0.25,
     daily_weight_threshold = 0.90,
     growth_curve_r2_min = 0.95,
+    # 试验全量程（kg）——「覆盖全量程」筛选口径，非区间包含过滤：
+    # 只有 入栏体重 <= 下界(45) 且 出栏体重 >= 上界(110) 的个体才保留，
+    # 不满足者整头删除（.apply_test_weight_range_filter()，issue #25）。
+    # 想让「起栏>45kg / 出栏<110kg 的正常个体」保留、仅剔除超界记录，需改代码；
+    # 调试脚本常用的 c(200, 20) 是反向区间，等效于关闭该筛选。
     test_weight_range = c(45, 110),
 
     # Feed QC

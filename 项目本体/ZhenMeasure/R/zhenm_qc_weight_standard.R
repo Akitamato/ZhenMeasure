@@ -22,6 +22,13 @@ ZhenM_qc_weight_standard <- function(standard_records, qc_method = "national_sta
 
 # Apply start/end test-weight-range filtering after weight QC.
 # Keep behavior consistent with historical overall QC: remove whole animals when range fails.
+#
+# 判定口径（issue #25 文档化，行为不变）：「覆盖全量程」——
+#   个体首日体重 <= test_weight_range[1] 且 末日体重 >= test_weight_range[2]，
+# 不满足即整头删除（连记录一起删），而不是把超界记录打标置 NA。
+# 这是全量程饲养试验的入选条件；普通场景下会删掉大量正常个体
+# （默认 c(45,110) 在三设备演示数据上分别删除 42% / 20% / 95% 的个体）。
+# 若需「保留个体、仅剔除超界记录」，属语义变更，需另开 issue 评估。
 .apply_test_weight_range_filter <- function(dt, cfg, log_detail, method_label = "", daily_weight_col = NULL) {
   test_weight_range <- cfg$national_standard$test_weight_range %||% c(45, 110)
 

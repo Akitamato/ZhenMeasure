@@ -632,6 +632,28 @@ test_that("连续性检查只保留最长合格段（issue #22 非等值 join �
   expect_equal(res$summary[step == "continuity_removed_records", n_removed], 5)
 })
 
+test_that("test_weight_range 是「覆盖全量程」口径：不满足者整头删除（issue #25）", {
+  skip_if_not_installed("data.table")
+
+  mk <- function(id, start_g, end_g, n = 30) {
+    data.table::data.table(
+      animal_id = id,
+      device_type = "YANGXIANG",
+      record_date = rep(seq.Date(as.Date("2024-01-01"), by = "day", length.out = n), each = 2),
+      weight_g = rep(seq(start_g, end_g, length.out = n), each = 2)
+    )
+  }
+  dt <- data.table::rbindlist(list(
+    mk("A_full_range", 40000, 115000),  # 首日 <=45kg 且 末日 >=110kg → 保留
+    mk("B_start_high", 50000, 115000),  # 入栏 50kg > 45kg → 整头删除
+    mk("C_end_low", 40000, 105000)      # 出栏 105kg < 110kg → 整头删除
+  ))
+
+  res <- suppressWarnings(ZhenM_qc_weight_standard(dt, "national_standard"))
+
+  expect_setequal(unique(res$animal_id), "A_full_range")
+})
+
 test_that("汇总行走 logger 落盘，无 logger 时仍走 message（issue #23）", {
   skip_if_not_installed("data.table")
 

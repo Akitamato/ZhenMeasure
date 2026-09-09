@@ -16,6 +16,17 @@ A list of configuration parameters
 Returns default configuration parameters for quality control, imputation,
 and phenotype calculation using the national standard method.
 }
+\section{`test_weight_range`（试验全量程筛选）}{
+
+`national_standard$test_weight_range`（默认 `c(45, 110)` kg）采用
+**覆盖全量程** 口径，而不是区间包含过滤：只有「入栏体重 <= 下界 且
+出栏体重 >= 上界」的个体才保留，不满足者整头删除（含其全部记录）。
+因此入栏已超下界或出栏未达上界的正常个体也会被删除，且该规则对
+全量程饲养试验之外的场景并不适用；实测三设备演示数据（默认口径）
+分别删除 42% / 20% / 95% 的个体（issue #25）。
+调试脚本中常见的 `c(200, 20)` 是反向区间，等效于关闭该筛选。
+}
+
 \examples{
 # Get national standard config
 cfg <- ZhenM_default_config("national_standard")
