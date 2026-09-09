@@ -58,6 +58,33 @@ test_that("weight imputation is invariant to input row order (issue #8)", {
   expect_equal(which(r_s[order(record_date)]$is_imputed_wt), sort(miss))
 })
 
+test_that("weight imputation never overwrites observed weights (issue #26)", {
+  skip_if_not_installed("data.table")
+  skip_if_not_installed("zoo")
+  skip_if_not_installed("imputeTS")
+
+  set.seed(20260909)
+  n <- 30
+  miss <- c(5, 12, 13, 20)
+  dt <- data.table::data.table(
+    animal_id = "A001",
+    record_date = seq.Date(as.Date("2024-01-01"), by = "day", length.out = n),
+    daily_weight_g = 30000 + 700 * seq_len(n) + round(rnorm(n, 0, 300))
+  )
+  dt[miss, daily_weight_g := NA]
+  observed <- !is.na(dt$daily_weight_g)
+  orig <- dt$daily_weight_g
+
+  res <- ZhenMeasure:::.impute_weight_national(data.table::copy(dt), ZhenM_default_config("national_standard"))
+
+  # 原本有效的观测值必须逐位不变（不被 Kalman 平滑改写）
+  expect_equal(res$daily_weight_g[observed], orig[observed])
+  # 插补标记与原缺失位严格一致
+  expect_equal(which(res$is_imputed_wt), miss)
+  # 缺失位全部被填补
+  expect_false(any(is.na(res$daily_weight_g)))
+})
+
 test_that("feed imputation is invariant to input row order (issue #8)", {
   skip_if_not_installed("data.table")
   skip_if_not_installed("zoo")

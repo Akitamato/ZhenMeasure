@@ -98,15 +98,20 @@ ZhenM_impute_feed <- function(daily_records, impute_method = "national_standard"
     min_valid_wt <- min(y, na.rm = TRUE)
     max_valid_wt <- max(y, na.rm = TRUE)
 
+    # 只对「被插补的位置」取值与钳位（issue #26）。na_kalman / na.approx 实测均不改写
+    # 非缺失位置，但显式只写 missing_idx 让「观测值不被改动」成为本函数的不变量，
+    # 不再依赖 imputeTS 内部实现；钳位同样只作用于插补值，不碰原始观测。
+    y_imputed <- y_interp[missing_idx]
+
     # Physical floor: can't be negative, can't be less than 90% of minimum recorded weight
     hard_floor <- min_valid_wt * 0.9
-    y_interp[y_interp < hard_floor] <- hard_floor
+    y_imputed[y_imputed < hard_floor] <- hard_floor
 
     # Physical ceiling: can't exceed max recorded weight by more than 20kg (20,000g)
     hard_ceil <- max_valid_wt + 20000
-    y_interp[y_interp > hard_ceil] <- hard_ceil
+    y_imputed[y_imputed > hard_ceil] <- hard_ceil
 
-    dt[idx, daily_weight_g := y_interp]
+    dt[idx[missing_idx], daily_weight_g := y_imputed]
     dt[idx[missing_idx], is_imputed_wt := TRUE]
   }
 
