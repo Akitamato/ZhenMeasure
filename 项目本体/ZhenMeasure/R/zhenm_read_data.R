@@ -161,7 +161,14 @@ ZhenM_convert_yangxiang_to_standard <- function(data_path, format_path) {
   }
 
   all_data <- lapply(files, function(file) {
-    .read_yangxiang_file(file, format_info)
+    # issue #15：批量读取补充文件级错误定位（如 n_max 探测与全量读取列数
+    # 不一致导致的 readxl 列数报错），否则失败文件无从查找
+    tryCatch(
+      .read_yangxiang_file(file, format_info),
+      error = function(e) stop(
+        sprintf("读取 YANGXIANG 文件失败: %s | %s", basename(file), conditionMessage(e)),
+        call. = FALSE)
+    )
   })
 
   dt <- data.table::rbindlist(all_data, use.names = TRUE, fill = TRUE)
@@ -235,8 +242,8 @@ ZhenM_convert_yangxiang_to_standard <- function(data_path, format_path) {
   standard_dt[, ID := trimws(as.character(dt[[id_col_name]]))]
 
   # Numeric columns mapping
-  num_names <- names(dt)[format_info$numeric_cols]
-  date_names <- names(dt)[format_info$date_cols]
+  num_names <- .col_names_by_pos(names(dt), format_info$numeric_cols)
+  date_names <- .col_names_by_pos(names(dt), format_info$date_cols)
 
   # Weight (usually first numeric column)
   weight_col <- mapped_col("Weight")
@@ -423,7 +430,7 @@ ZhenM_convert_fire_to_standard <- function(data_path, format_path, birth_info_pa
 
   visit_col <- .get_mapped_col(dt, format_info, "Visit_time")
   if (is.null(visit_col)) {
-    date_names <- names(dt)[format_info$date_cols]
+    date_names <- .col_names_by_pos(names(dt), format_info$date_cols)
     if (length(date_names) >= 1) visit_col <- date_names[1]
   }
   if (!is.null(visit_col)) {
@@ -434,7 +441,7 @@ ZhenM_convert_fire_to_standard <- function(data_path, format_path, birth_info_pa
 
   duration_col <- .get_mapped_col(dt, format_info, "Duration")
   if (is.null(duration_col)) {
-    num_names <- names(dt)[format_info$numeric_cols]
+    num_names <- .col_names_by_pos(names(dt), format_info$numeric_cols)
     if (length(num_names) >= 1) duration_col <- num_names[1]
   }
   if (!is.null(duration_col)) {
@@ -447,7 +454,7 @@ ZhenM_convert_fire_to_standard <- function(data_path, format_path, birth_info_pa
 
   feed_col <- .get_mapped_col(dt, format_info, "Feed_intake")
   if (is.null(feed_col)) {
-    num_names <- names(dt)[format_info$numeric_cols]
+    num_names <- .col_names_by_pos(names(dt), format_info$numeric_cols)
     if (length(num_names) >= 2) feed_col <- num_names[2]
   }
   if (!is.null(feed_col)) {
@@ -458,7 +465,7 @@ ZhenM_convert_fire_to_standard <- function(data_path, format_path, birth_info_pa
 
   weight_col <- .get_mapped_col(dt, format_info, "Weight")
   if (is.null(weight_col)) {
-    num_names <- names(dt)[format_info$numeric_cols]
+    num_names <- .col_names_by_pos(names(dt), format_info$numeric_cols)
     if (length(num_names) >= 3) weight_col <- num_names[3]
   }
   if (!is.null(weight_col)) {
@@ -469,7 +476,7 @@ ZhenM_convert_fire_to_standard <- function(data_path, format_path, birth_info_pa
 
   location_col <- .get_mapped_col(dt, format_info, "Location")
   if (is.null(location_col) && length(format_info$character_cols) > 0) {
-    location_col <- names(dt)[format_info$character_cols[1]]
+    location_col <- .col_names_by_pos(names(dt), format_info$character_cols[1])
   }
   if (!is.null(location_col)) {
     standard_dt[, Location := as.character(dt[[location_col]])]
@@ -513,7 +520,7 @@ ZhenM_convert_fire_to_standard <- function(data_path, format_path, birth_info_pa
 
   visit_col <- .get_mapped_col(dt, format_info, "Visit_time")
   if (is.null(visit_col)) {
-    date_names <- names(dt)[format_info$date_cols]
+    date_names <- .col_names_by_pos(names(dt), format_info$date_cols)
     if (length(date_names) >= 1) visit_col <- date_names[1]
   }
   if (!is.null(visit_col)) {
@@ -524,7 +531,7 @@ ZhenM_convert_fire_to_standard <- function(data_path, format_path, birth_info_pa
 
   end_col <- .get_mapped_col(dt, format_info, "End_time")
   if (is.null(end_col)) {
-    date_names <- names(dt)[format_info$date_cols]
+    date_names <- .col_names_by_pos(names(dt), format_info$date_cols)
     if (length(date_names) >= 2) end_col <- date_names[2]
   }
   if (!is.null(end_col)) {
@@ -537,7 +544,7 @@ ZhenM_convert_fire_to_standard <- function(data_path, format_path, birth_info_pa
 
   feed_col <- .get_mapped_col(dt, format_info, "Feed_intake")
   if (is.null(feed_col)) {
-    num_names <- names(dt)[format_info$numeric_cols]
+    num_names <- .col_names_by_pos(names(dt), format_info$numeric_cols)
     if (length(num_names) >= 1) feed_col <- num_names[1]
   }
   if (!is.null(feed_col)) {
@@ -552,7 +559,7 @@ ZhenM_convert_fire_to_standard <- function(data_path, format_path, birth_info_pa
 
   weight_col <- .get_mapped_col(dt, format_info, "Weight")
   if (is.null(weight_col)) {
-    num_names <- names(dt)[format_info$numeric_cols]
+    num_names <- .col_names_by_pos(names(dt), format_info$numeric_cols)
     if (length(num_names) >= 2) weight_col <- num_names[2]
   }
   if (!is.null(weight_col)) {
@@ -567,7 +574,7 @@ ZhenM_convert_fire_to_standard <- function(data_path, format_path, birth_info_pa
 
   location_col <- .get_mapped_col(dt, format_info, "Location")
   if (is.null(location_col) && length(format_info$character_cols) > 0) {
-    location_col <- names(dt)[format_info$character_cols[1]]
+    location_col <- .col_names_by_pos(names(dt), format_info$character_cols[1])
   }
   if (!is.null(location_col)) {
     standard_dt[, Location := as.character(dt[[location_col]])]

@@ -90,19 +90,16 @@
 #' @keywords internal
 .map_daily_values_to_records <- function(dt, idx, daily_data, value_col, output_col) {
   dt_sub <- dt[idx]
-  
+
   # Create mapping table with duplicate dates removed (keep first occurrence)
   map_data <- unique(daily_data[, c("record_date", value_col), with = FALSE], by = "record_date")
   data.table::setnames(map_data, value_col, "map_value")
-  data.table::setkey(map_data, record_date)
-  
-  # Match and assign values using merge to avoid cartesian join issues
-  dt_sub_copy <- data.table::copy(dt_sub)
-  data.table::setkey(dt_sub_copy, record_date)
-  
-  merged <- map_data[dt_sub_copy, on = "record_date"]
-  matched_values <- merged$map_value
-  
+
+  # issue #15：按 dt_sub 行序查表回填。旧实现把副本 setkey 按日期重排后再
+  # 按原始 idx 写回，仅当 idx 恰好按 record_date 升序时才对齐，乱序输入会
+  # 静默错位；match 天然保序（NA 日期不参与匹配，回填 NA）
+  matched_values <- map_data$map_value[match(dt_sub$record_date, map_data$record_date)]
+
   data.table::set(dt, i = idx, j = output_col, value = matched_values)
   return(dt)
 }

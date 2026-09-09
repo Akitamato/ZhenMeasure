@@ -106,9 +106,10 @@ run_zhen_measure <- function(data_path, data_type, format_path,
     if ("is_outlier_feed" %in% names(corrected_records_output)) {
       corrected_records_output[is_outlier_feed == TRUE, c("feed_g", "Feed_intake") := NA_real_]
     }
-    # 只输出需要的业务列 (1~12列，根据实际业务需要，去除flag等诊断列)
-    # (此处采取动态截取，防止列名错位，通常前12列包含ID,时间,体重,采食等)
-    keep_cols <- intersect(names(corrected_records_output)[1:12], names(corrected_records_output))
+    # 只输出标准业务列（白名单取自标准 schema，去除 flag 等诊断列与内部列）
+    # issue #15：不再按位置截取前 12 列——列序变化或 schema 扩列时会静默截掉业务列
+    schema_fields <- ZhenM_standard_record_fields()[field != "source_file", field]
+    keep_cols <- intersect(schema_fields, names(corrected_records_output))
     corrected_records_output <- corrected_records_output[, ..keep_cols]
     
     # 物理剔除毫无意义的空测定行（采食和体重都没了的行）

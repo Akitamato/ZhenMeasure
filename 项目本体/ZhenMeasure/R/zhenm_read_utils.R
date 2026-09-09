@@ -181,6 +181,28 @@ ZhenM_attach_measurement_day <- function(dt) {
 }
 
 
+#' 按位置安全取列名
+#'
+#' issue #15：names(dt)[pos] 在 pos 为 0/负数/越界时会静默引入 NA 或缩空向量，
+#' 后续 dt[[NA]] 的报错难以定位。此助手丢弃无效位置并告警；全部无效时返回 NULL，
+#' 使调用方的 length()/is.null() 守卫自然走降级分支。
+#'
+#' @param nm 列名向量
+#' @param pos 位置索引（标量或向量）
+#' @return 有效位置对应的列名；无有效位置时返回 NULL
+#' @keywords internal
+.col_names_by_pos <- function(nm, pos) {
+  pos <- as.integer(pos)
+  if (length(pos) == 0) return(NULL)
+  ok <- !is.na(pos) & pos >= 1L & pos <= length(nm)
+  if (!all(ok)) {
+    warning(sprintf("忽略无效列位置 %s（有效范围 1..%d）",
+                    paste(pos[!ok], collapse = ", "), length(nm)), call. = FALSE)
+  }
+  if (!any(ok)) return(NULL)
+  nm[pos[ok]]
+}
+
 #' Read single YANGXIANG xlsx file
 #' @keywords internal
 .read_yangxiang_file <- function(file, format_info) {
@@ -196,12 +218,16 @@ ZhenM_attach_measurement_day <- function(dt) {
   raw[, source_file := basename(file)]
 
   # Fill down logic for merged cells
-  id_col_name <- names(raw)[format_info$id_col]
+  id_col_name <- .col_names_by_pos(names(raw), format_info$id_col)
+  if (is.null(id_col_name)) {
+    stop(sprintf("无法按 format 定位 ID 列（id_col=%s 越界，文件 %s 共 %d 列）",
+                 paste(format_info$id_col, collapse = ","), basename(file), ncol(raw)), call. = FALSE)
+  }
   raw[[id_col_name]] <- trimws(as.character(raw[[id_col_name]]))
   raw[[id_col_name]][raw[[id_col_name]] == ""] <- NA_character_
 
   # Fill down ID and date columns
-  fill_cols <- names(raw)[c(format_info$character_cols, format_info$date_cols)]
+  fill_cols <- .col_names_by_pos(names(raw), c(format_info$character_cols, format_info$date_cols))
   fill_cols <- setdiff(fill_cols, c("age_day", "daily_feed_g", "duration_sec",
                                      "feed_g", "weight_g", "当天进分栏器次数"))
 

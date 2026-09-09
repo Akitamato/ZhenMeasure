@@ -66,3 +66,43 @@ test_that(".parse_datetime leaves implausible numbers as NA (not garbage dates)"
   expect_false(is.na(res[1]))
   expect_true(is.na(res[2]))
 })
+
+test_that(".col_names_by_pos drops invalid positions and warns (issue #15)", {
+  nm <- c("a", "b", "c")
+  expect_identical(ZhenMeasure:::.col_names_by_pos(nm, c(1, 3)), c("a", "c"))
+  expect_identical(ZhenMeasure:::.col_names_by_pos(nm, 2), "b")
+  # 0 / 负数 / 越界 / NA 位置：丢弃并告警，不引入 NA 元素
+  expect_warning(got <- ZhenMeasure:::.col_names_by_pos(nm, c(1, 5, 0, -1, NA_integer_)))
+  expect_identical(got, "a")
+  # 全部无效 → NULL（调用方 is.null()/length() 守卫自然走降级分支）
+  expect_null(suppressWarnings(ZhenMeasure:::.col_names_by_pos(nm, c(0, 9))))
+  expect_null(ZhenMeasure:::.col_names_by_pos(nm, integer(0)))
+})
+
+test_that(".map_daily_values_to_records aligns with unsorted idx (issue #15)", {
+  skip_if_not_installed("data.table")
+
+  # 动物记录乱序（日期 3,1,2）——旧实现 setkey 重排后按原 idx 写回会静默错位
+  dt <- data.table::data.table(
+    animal_id = c("A", "A", "A"),
+    record_date = as.Date(c("2024-01-03", "2024-01-01", "2024-01-02")),
+    val = NA_real_
+  )
+  daily <- data.table::data.table(
+    record_date = as.Date(c("2024-01-01", "2024-01-02", "2024-01-03")),
+    daily_value = c(10, 20, 30)
+  )
+  out <- ZhenMeasure:::.map_daily_values_to_records(
+    dt, which(dt$animal_id == "A"), daily, "daily_value", "val")
+  expect_identical(as.numeric(out$val), c(30, 10, 20))
+
+  # 日期不在映射表中 → NA；映射表带多余日期 → 不产生额外行
+  dt2 <- data.table::data.table(
+    record_date = as.Date(c("2024-01-01", "2024-02-01")), val = NA_real_)
+  daily2 <- data.table::data.table(
+    record_date = as.Date(c("2024-01-01", "2024-03-01")), daily_value = c(10, 99))
+  out2 <- ZhenMeasure:::.map_daily_values_to_records(
+    dt2, seq_len(nrow(dt2)), daily2, "daily_value", "val")
+  expect_identical(as.numeric(out2$val), c(10, NA))
+  expect_identical(nrow(out2), 2L)
+})
