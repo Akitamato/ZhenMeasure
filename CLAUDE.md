@@ -117,6 +117,23 @@ Comparison test scripts are in two folders under `测试/`:
 
 ## Bug Fix Log
 
+### V1.1.3
+
+代码审查批量修复：`fix/code-review-issues` 分支 26 个提交覆盖 issue #8–#33，已快进合入 main。完整回归报告见 issue #34。单元测试 162 → 319 断言（0 FAIL / 0 ERROR / 5 SKIP），`R CMD check --no-build-vignettes --no-manual` 与基线同为本机环境下的 1 ERROR / 3 WARNING / 1 NOTE。
+
+**行为变更（仅两项，其余为纯修复/重构）**：
+- **#14 体重 QC 还原单轮 RLM 双阈值**：删除从未生效的第二轮日级 RLM，日级判定改用 `daily_weight_threshold`（0.90 共识）而非误用的记录级 `weight_threshold`（0.25）。日级体重异常标记扩容（NEDAP 8→313、FIRE 837→8567、扬翔 14831→146402 条）；扬翔比原先多保留 43 头个体（505→547），FIRE/NEDAP 个体数不变。这是本次合入唯一的实质业务影响，已在 issue #34 中提请业务确认。
+- **#27 体重阶段区间统一为左闭右开 `[min, max)`**：四处口径统一，杨翔实测影响恰 1 个阶段行。
+
+**重点修复**：
+- **#8（严重）** 插补函数按日期序计算却按原始行序写回，乱序输入会把插补值静默写到错误日期；同时修复连续缺失路径的中间列 schema 污染。
+- **#29** Gompertz 拟合公式含子集表达式（`x_gomp[valid]`）触发 `nls` 的 `n %% respLength == 0` 校验失败，错误被 `tryCatch` 吞掉后整头动物静默跳过检查（FIRE 211 头中 190 头从未被检查）；改为数据框建模 + 公式变量名，并修复 `predict(newdata=)` 被静默忽略。
+- **#9** 紧凑日期 `YYYYMMDD` 被误判为 Excel 序列号；**#13** LMM 补偿量符号守卫与下限护栏；**#11** FCR/ADFI 除零与退化守卫；**#19** 边界条件 8 处（空表 NaN、全 NA ±Inf、flag 被 NA 污染、`Location` 拼出字面 `"NA"` 等）。
+- **#18** `jsonlite` 移入 Imports（原软守卫会让干净环境核心读取不可用）；**#20** 三套日期解析器合并；**#21** 日级出口校验抽取；**#22** 生长曲线判定去 O(n²)；**#23** QC 汇总行落盘。
+- 零行为变化的加固：#25（文档）、#26（插补只写缺失位）、#30（`copy(raw_dt)`）、#31（删冗余检查）、#32（残留 NA 告警）、#33（早退 summary 列名统一）。
+
+**版本号**：Pipeline 启动 banner 的版本号改从 DESCRIPTION 读取（`utils::packageVersion`），此前硬编码为 V1.0.0 且已落后两个版本。
+
 ### V1.1.2
 
 Phase 1：日级 LMM 兜底校正重构（issue #5，分支 `feat/feed-correction-switches`）。动机：注入式仿真基准证明旧 LMM 设定为净负贡献。四项修复（`zhenm_daily_aggregate_filtered.R` `.apply_feed_lmm_correction()`）：

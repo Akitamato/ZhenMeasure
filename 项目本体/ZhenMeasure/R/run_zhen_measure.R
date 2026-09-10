@@ -52,18 +52,25 @@ run_zhen_measure <- function(data_path, data_type, format_path,
 
   cfg <- ZhenM_merge_config(config, qc_method)
 
+  # 版本号从包元数据读取，避免与 DESCRIPTION 漂移（V1.1.3 前此处硬编码，已落后两个版本）
+  pkg_banner <- paste0(
+    "ZhenMeasure V",
+    tryCatch(as.character(utils::packageVersion("ZhenMeasure")),
+             error = function(e) "unknown")
+  )
+
   run_impl <- function() {
     start_time <- Sys.time()
 
     if (!is.null(logger)) {
-      logger$section("ZhenMeasure V1.0.0 Pipeline 开始")
+      logger$section(paste0(pkg_banner, " Pipeline 开始"))
       logger$info(paste0("数据类型: ", data_type))
       logger$info(paste0("数据路径: ", data_path))
       logger$info(paste0("质控方法: ", qc_method))
       logger$info(paste0("表型方法: ", phenotype_method))
     }
 
-    message("=== ZhenMeasure V1.0.0 Pipeline ===")
+    message(paste0("=== ", pkg_banner, " Pipeline ==="))
     message("Step 1: Reading data...")
     if (!is.null(logger)) logger$section("Step 1: 数据读取")
     standard_data_original <- ZhenM_read_data(data_path, data_type, format_path, birth_info_path)

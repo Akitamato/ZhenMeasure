@@ -1,5 +1,41 @@
 # ZhenMeasure news
 
+## 1.1.3
+
+代码审查批量修复（issue #8–#33，共 26 个提交）。详见 issue #34 的分支合入前全量回归报告。
+
+### Changed
+
+- **体重 QC 还原单轮 RLM 双阈值设计**（issue #14）：删除从未生效的第二轮日级 RLM；日级判定改用专用键 `daily_weight_threshold`（0.90，约 1.5σ 的「整日一致偏移」共识），此前误用了记录级 `weight_threshold`（0.25，约 5.4σ），导致日级规则几乎不触发。单记录日不参与日级共识（无「全部一致」语义）。
+  **此项会改变表型结果**：日级体重异常标记显著扩容（NEDAP 8→313、FIRE 837→8567、扬翔 14831→146402 条），扬翔因生长曲线 R² 提高而多保留 43 头个体（505→547）。FIRE / NEDAP 个体数不变。
+- **体重阶段区间统一为左闭右开 `[min, max)`**（issue #27）：`ZhenM_calc_phenotypes_stage()`、`fcr_ranges`、日聚合与表型计算四处口径统一，消除体重恰等于阶段上界当天的重复计数。
+- 记录级物理纠正的 `speed_max` 接入 config（issue #12），不再与 LMM 校正模块的参数来源不一致。
+- `jsonlite` 由 Suggests 移入 Imports（issue #18）：JSON 是唯一受支持的 format 配置路径，原软守卫会让干净环境（不装 Suggests）下的核心读取功能不可用。
+- 三套重复的日期解析器合并为 `.parse_temporal()` 单一实现（issue #20）。
+- 日级采食量出口校验抽取为 `.finalize_daily_feed()`（issue #21），含「无 feed 列」在内的三条出口路径口径统一。
+- 生长曲线判定与连续性回填去掉 O(n²)/全表扫描（issue #22）。
+- QC 汇总行改为经 logger 落盘、PDF 输出加设备守卫、`measurement_day` 口径统一（issue #23）。
+- `test_weight_range` 文档化其「覆盖全量程」语义（issue #25，零行为变化）。
+- `ZhenM_parse_data_format()` 文档更正为只支持 `.json`（issue #10）。
+- Pipeline 启动 banner 的版本号改从 DESCRIPTION 读取，不再硬编码（此前长期停留在 V1.0.0）。
+
+### Fixed
+
+- **插补函数按日期序计算却按原始行序写回**（issue #8，严重）：未按 `animal_id + record_date` 预排序的输入会把插补值静默写到错误日期。两个插补入口现统一排序。同一处修复连续缺失路径把 `cum_feed` / `weight_kg` / `pred_*` 等拟合中间列写进输出表的 schema 污染。
+- **Gompertz 生长曲线检查在多数个体上静默失效**（issue #29）：拟合公式含子集表达式（`y_gomp[valid] ~ ... x_gomp[valid]`），触发 `nls` 的 `n %% respLength == 0` 校验失败并抛 `str2lang("~")` 错误，被 `tryCatch` 吞成 `NULL` 后整头动物跳过检查（FIRE 实测 211 头中 190 头从未被检查）。改为数据框建模 + 公式变量名，同时修复 `predict(newdata=)` 因名称不匹配被静默忽略的问题。
+- **紧凑日期 `YYYYMMDD` 被误判为 Excel 序列号**（issue #9）。
+- **LMM 补偿量缺少符号守卫与下限护栏**（issue #13）。
+- FCR / ADFI 除零与退化数据守卫（issue #11）。
+- 边界条件 8 处修正（issue #19）：空表汇总 `percentage` 为 0 而非 NaN、全 NA 序列不再产生 ±Inf、QC flag 列不被 NA 污染、`Location` 不再拼出字面 `"NA"`、单列 birth info 不再报错等。
+- 排序隐式依赖与位置索引越界防护（issue #15）；硬编码阈值与表头跳过行数接入 config（issue #16）。
+- `ZhenM_merge_config()` 对未知配置键告警，三个校正开关的依赖关系文档化（issue #17）。
+- 体重插补只写「被插补的位置」，观测值不被改写成为显式不变量（issue #26）。
+- legacy 移除提示改用 `identical()` 判定，恢复三处入口的友好报错可达性（issue #28；原 `match.arg` 使其成为死代码）。
+- LMM 校正入口先 `copy(raw_dt)`，不再按引用给调用方的表留下 `is_feed_normal_record` 残留列（issue #30）。
+- 采食插补残留 NA 会被下游 `sum(na.rm = TRUE)` 静默当作 0 时，显式告警（issue #32）。
+- Overall QC 早退路径的 summary 列名与正常路径统一为 `associated_animal_ids`（issue #33），`qc_overall_summary.csv` 表头不再随数据状态变化。
+- 删除 `.impute_weight_national()` 中重复的数据充足性检查（issue #31，零行为变化）。
+
 ## 1.1.2
 
 ### Added
