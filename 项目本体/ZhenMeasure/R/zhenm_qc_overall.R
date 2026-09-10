@@ -131,13 +131,15 @@ ZhenM_qc_overall <- function(
 
   if (nrow(dt) == 0) {
     log_info("Warning: All data has been filtered out. QC process is terminated.")
+    # issue #33：summary 的列名必须与正常路径一致（原为 removed_animal_ids），
+    # 否则 qc_overall_summary.csv 的表头随数据状态变化，按列名取值的下游会静默落空
     return(list(
       records = dt,
       summary = data.table::data.table(
         step = c("keep_specified_ids", "missing_id_or_date", "duplicate_records", "incomplete_data", "continuity_removed_records", "logic_invalid"),
         n_removed = c(removed_keep_records, removed_missing, removed_duplicate, removed_incomplete_records, 0L, 0L),
         n_removed_animals = c(removed_keep_animals, removed_missing_animals, removed_duplicate_animals, removed_incomplete_animals, 0L, 0L),
-        removed_animal_ids = c(
+        associated_animal_ids = c(
           paste(removed_ids_keep, collapse = ";"),
           paste(removed_ids_missing, collapse = ";"),
           paste(removed_ids_duplicate, collapse = ";"),

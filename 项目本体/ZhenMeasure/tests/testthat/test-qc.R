@@ -709,6 +709,43 @@ test_that("三个 QC 阶段的汇总行都能被 logger 捕获（issue #23）", 
   expect_true(any(grepl("^Overall QC:", lines)))
 })
 
+test_that("Overall QC 早退路径与正常路径的 summary 列名一致（issue #33）", {
+  skip_if_not_installed("data.table")
+
+  cfg <- list(national_standard = list(min_test_days = 3, max_missing_rate = 0.9))
+
+  # 正常路径：数据保留
+  dt_ok <- data.table::data.table(
+    animal_id = rep("A001", 80),
+    device_type = "YANGXIANG",
+    record_date = seq.Date(as.Date("2024-01-01"), by = "day", length.out = 80),
+    feed_g = 2500,
+    duration_sec = 600,
+    weight_g = 40000 + 300 * seq_len(80),
+    age_day = seq(70, 149)
+  )
+  r_ok <- suppressWarnings(suppressMessages(
+    ZhenM_qc_overall(dt_ok, config = cfg, min_segment_days = 3)
+  ))
+
+  # 早退路径：record_date 全缺失 → 记录被清空后提前 return
+  dt_empty <- data.table::data.table(
+    animal_id = c("A001", "A002"),
+    device_type = "YANGXIANG",
+    record_date = as.Date(rep(NA_character_, 2)),
+    feed_g = 2500,
+    duration_sec = 600,
+    weight_g = 50000
+  )
+  r_empty <- suppressWarnings(suppressMessages(
+    ZhenM_qc_overall(dt_empty, config = cfg, min_segment_days = 3)
+  ))
+
+  expect_equal(nrow(r_empty$records), 0L)  # 确已走早退分支
+  expect_identical(names(r_empty$summary), names(r_ok$summary))
+  expect_true("associated_animal_ids" %in% names(r_empty$summary))
+})
+
 test_that("LMM 校正不按引用改写调用方传入的 raw_dt（issue #30）", {
   skip_if_not_installed("data.table")
 
