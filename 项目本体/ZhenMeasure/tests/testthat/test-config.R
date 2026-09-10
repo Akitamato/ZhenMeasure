@@ -46,9 +46,32 @@ test_that("national_standard config has required parameters", {
   expect_true(is.data.frame(cfg$fcr_ranges))
   expect_equal(nrow(cfg$fcr_ranges), 9)
 
-  # 校正机制开关默认开启（= V1.1.1 现状行为）
+  # 校正机制开关默认开启
   expect_true(cfg$use_record_feed_correction)
   expect_true(cfg$use_lmm_feed_correction)
+  # LMM 叠加（issue #5「F 转正」）：V1.1.4 起默认开启，
+  # 设 FALSE 可退回 V1.1.1 的纯记录级物理纠正行为
+  expect_true(cfg$use_lmm_stacking)
+  expect_false(ZhenM_merge_config(
+    list(national_standard = list(use_lmm_stacking = FALSE)), "national_standard"
+  )$national_standard$use_lmm_stacking)
+})
+
+test_that("默认 use_lmm_stacking 与显式 TRUE 等价（issue #5 F 转正）", {
+  # 转正的关键契约：不传该键时的行为必须与显式 TRUE 完全一致，
+  # 否则「默认」与「F 变体」在基准里的对应关系会断掉。
+  default_cfg <- ZhenM_merge_config(NULL, "national_standard")$national_standard
+  explicit_cfg <- ZhenM_merge_config(
+    list(national_standard = list(use_lmm_stacking = TRUE)), "national_standard"
+  )$national_standard
+  expect_identical(default_cfg$use_lmm_stacking, explicit_cfg$use_lmm_stacking)
+
+  # 反向：显式 FALSE 必须真的能关掉（开关可达）
+  off_cfg <- ZhenM_merge_config(
+    list(national_standard = list(use_lmm_stacking = FALSE)), "national_standard"
+  )$national_standard
+  expect_false(off_cfg$use_lmm_stacking)
+  expect_true(off_cfg$use_record_feed_correction)  # 关叠加不动记录级纠正
 })
 
 test_that("ZhenM_merge_config merges user config", {

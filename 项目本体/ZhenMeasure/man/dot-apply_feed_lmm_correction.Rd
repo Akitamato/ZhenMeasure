@@ -34,7 +34,7 @@ Phase 1 重构（issue #5，V1.1.2）修复四个统计缺陷：
 另新增台账列 lmm_correction_g（每日净校正值），全程可追溯。
 }
 \details{
-stack 模式（`use_lmm_stacking=TRUE` 且记录级纠正成功时）：在物理纠正后的
+stack 模式（`use_lmm_stacking=TRUE`——V1.1.4 起为默认——且记录级纠正成功时）：在物理纠正后的
 日值上做**互补式**校正——只建模「噪声置零类」flag（负值/极高速小采食/
 长时间零速被物理规则置 0 的记录）的时长特征；已被物理封顶恢复的
 speed_too_fast / feed_too_high 不再入模，避免二次补偿。响应为纠正后的

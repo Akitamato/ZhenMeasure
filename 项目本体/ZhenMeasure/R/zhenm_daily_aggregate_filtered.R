@@ -16,11 +16,11 @@
 #' @param config Optional configuration list (merged via ZhenM_merge_config). Controls the
 #'   optional FCR anchor correction (`national_standard$use_fcr_anchor`) and the correction
 #'   mechanism switches (`use_record_feed_correction`, `use_lmm_feed_correction`,
-#'   experimental stacking switch `use_lmm_stacking`).
+#'   stacking switch `use_lmm_stacking`, default TRUE since V1.1.4).
 #'   NULL keeps default behaviour.
 #'   三开关依赖（issue #17）：`use_lmm_feed_correction=TRUE` 仅在记录级纠正
-#'   关闭或失败时作为日级兜底运行；记录级纠正成功且未开启 `use_lmm_stacking`
-#'   时 LMM 不运行（避免二次校正），该组合下此开关为空操作。
+#'   关闭或失败时作为日级兜底运行；记录级纠正成功时是否再跑 LMM 由
+#'   `use_lmm_stacking` 决定，该组合下兜底开关为空操作。
 #' @return A daily-level table aggregated by animal and date with daily_weight_g and enhanced feed QC
 #' @export
 ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
@@ -416,7 +416,7 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
 #'    （把记录级物理规则的先验吸收进 LMM）。
 #' 另新增台账列 lmm_correction_g（每日净校正值），全程可追溯。
 #'
-#' stack 模式（`use_lmm_stacking=TRUE` 且记录级纠正成功时）：在物理纠正后的
+#' stack 模式（`use_lmm_stacking=TRUE`——V1.1.4 起为默认——且记录级纠正成功时）：在物理纠正后的
 #' 日值上做**互补式**校正——只建模「噪声置零类」flag（负值/极高速小采食/
 #' 长时间零速被物理规则置 0 的记录）的时长特征；已被物理封顶恢复的
 #' speed_too_fast / feed_too_high 不再入模，避免二次补偿。响应为纠正后的

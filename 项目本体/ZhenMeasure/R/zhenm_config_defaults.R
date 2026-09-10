@@ -86,15 +86,19 @@ ZhenM_default_config <- function(qc_method = "national_standard") {
     # 消融实验（issue #5）与后续锚点修复的对照评测。
     # 三开关依赖关系（issue #17）：
     #   use_lmm_feed_correction=TRUE 仅在记录级纠正「关闭或失败」时兜底运行；
-    #   记录级纠正成功且 use_lmm_stacking=FALSE 时，LMM 不运行（V1.1.1 起
-    #   兜底设计，避免对已纠正记录二次校正）——此时该开关为空操作。
+    #   记录级纠正成功时是否再跑 LMM 由 use_lmm_stacking 决定，此时
+    #   use_lmm_feed_correction 为空操作。
     use_record_feed_correction = TRUE,
     use_lmm_feed_correction = TRUE,
 
-    # LMM 叠加模式（实验性）：记录级物理纠正成功后仍串联运行改良 LMM，
-    # 但只补偿物理规则无法恢复的「噪声置零类」损失（负值/极高速小采食/
-    # 长时间零速被置 0 的记录），避免对已被封顶纠正的记录二次补偿。
-    use_lmm_stacking = FALSE,
+    # LMM 叠加模式：记录级物理纠正成功后仍串联运行改良 LMM，但只补偿物理
+    # 规则无法恢复的「噪声置零类」损失（负值/极高速小采食/长时间零速被置 0
+    # 的记录），避免对已被封顶纠正的记录二次补偿。
+    # V1.1.4 起默认 TRUE（issue #5「F 转正」）：注入式基准三设备 9/9 格
+    # 优于纯记录级纠正（A），且干净数据上几乎不出手（FIRE 0 天 / NEDAP 1 天 /
+    # 扬翔 869 天且平均改动仅 7.7 g），代价是每台设备多一次 lme4 拟合
+    # （+0.4~7.7 秒）。设 FALSE 可退回 V1.1.1 的纯记录级物理纠正行为。
+    use_lmm_stacking = TRUE,
 
     # STL time-series feed QC (optional, disabled by default)
     use_stl_feed = FALSE,

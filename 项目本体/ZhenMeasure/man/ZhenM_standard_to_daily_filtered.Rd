@@ -12,11 +12,11 @@ ZhenM_standard_to_daily_filtered(standard_records, config = NULL)
 \item{config}{Optional configuration list (merged via ZhenM_merge_config). Controls the
 optional FCR anchor correction (`national_standard$use_fcr_anchor`) and the correction
 mechanism switches (`use_record_feed_correction`, `use_lmm_feed_correction`,
-experimental stacking switch `use_lmm_stacking`).
+stacking switch `use_lmm_stacking`, default TRUE since V1.1.4).
 NULL keeps default behaviour.
 三开关依赖（issue #17）：`use_lmm_feed_correction=TRUE` 仅在记录级纠正
-关闭或失败时作为日级兜底运行；记录级纠正成功且未开启 `use_lmm_stacking`
-时 LMM 不运行（避免二次校正），该组合下此开关为空操作。}
+关闭或失败时作为日级兜底运行；记录级纠正成功时是否再跑 LMM 由
+`use_lmm_stacking` 决定，该组合下兜底开关为空操作。}
 }
 \value{
 A daily-level table aggregated by animal and date with daily_weight_g and enhanced feed QC
