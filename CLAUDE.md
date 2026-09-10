@@ -117,6 +117,29 @@ Comparison test scripts are in two folders under `测试/`:
 
 ## Bug Fix Log
 
+### V1.1.4
+
+**LMM 叠加校正（`use_lmm_stacking`）转为出厂默认**（issue #5「F 转正」）。分支 `feat/lmm-stacking-default`，尚未合入 main。
+
+记录级物理纠正成功后，串联运行改良日级 LMM，只补偿物理规则无法恢复的「噪声置零类」损失（负值 / 极高速小采食 / 长时间零速被置 0 的记录）；已被封顶纠正的记录不入模，避免二次补偿。设 `use_lmm_stacking = FALSE` 可退回 V1.1.1 的纯记录级物理纠正行为。
+
+**依据**（注入式基准，三设备 × 三档注入率共 9 格，F 全部优于纯记录级纠正 A）：
+- 干净数据上 F 近乎不出手（FIRE 0 天改写、NEDAP 1 天 / 14.2 g、扬翔 869 天平均 7.7 g）；而日级 LMM 兜底路径 B 会在干净数据上日均改写数百克、波及数千天——「不无端改动好数据」是 F 相比例级纠正之外的实质增益。
+- 代价为每台设备多一次 `lme4` 拟合：+0.4s / +1.3s / +7.7s，占该设备读取+QC 耗时的 3~4%。
+- 更激进的右删失完整似然方案（G_ml）准确率略高（基准 9 格中 6 格第一，但领先仅 0.001~0.003），却慢 3.6~4.8 倍（issue #6），暂不纳入默认，仍留在 `feat/censored-full-likelihood` 分支。
+
+**实数据端到端回归（A=显式 FALSE vs F=显式 TRUE，走完整管线）**：
+
+| 设备 | 个体数 A/F | 日级 `daily_feed_g` 变化 | 总采食偏差 | 表型 ADFI 最大变化 |
+|---|---|---|---|---|
+| FIRE | 211 / 211 | 0 / 20913 天 | 0 g（逐位一致） | 无 |
+| NEDAP | 29 / 29 | 1 / 1915 天 | +14 g（+0.0003%） | 1 头 +0.22 g |
+| 扬翔 | 547 / 547 | 743 / 63805 天（1.16%） | +5690 g（+0.0042%） | 623/1613 阶段行，平均 +0.096 g、最大 6.375 g（0.32%） |
+
+扬翔的结构性影响：个体数与阶段行数不变，`flag_fcr_stage_invalid` 分布不变（TRUE 1248 / FALSE 365）；唯一结构变化是 1 头（`998-025021177551`）的三个阶段行 `n_valid_stages` 各减 1，但该行前后都已是 invalid，无 QC 分类翻转。
+
+**验证**：单测 319 → 324 PASS（+5 条断言锁定「默认 = 显式 TRUE」契约与开关可达性），0 FAIL / 0 ERROR / 5 SKIP；`R CMD check --no-build-vignettes --no-manual` 与基线同为 1 ERROR / 3 WARNING / 1 NOTE。证据见 issue #5 评论 5620400631。
+
 ### V1.1.3
 
 代码审查批量修复：`fix/code-review-issues` 分支 26 个提交覆盖 issue #8–#33，已快进合入 main。完整回归报告见 issue #34。单元测试 162 → 319 断言（0 FAIL / 0 ERROR / 5 SKIP），`R CMD check --no-build-vignettes --no-manual` 与基线同为本机环境下的 1 ERROR / 3 WARNING / 1 NOTE。
