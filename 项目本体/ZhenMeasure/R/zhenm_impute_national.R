@@ -28,7 +28,19 @@
     y <- sub$daily_feed_g
     missing_idx <- is.na(y)
 
-    if (!any(missing_idx) || sum(!missing_idx) < 10) next
+    if (!any(missing_idx) || sum(!missing_idx) < 10) {
+      # issue #32：有效点不足 10 时不建模，残留 NA 会被下游
+      # `sum(daily_feed_g, na.rm = TRUE)` 静默当作 0，使 ADFI 系统性偏低。
+      # 不改数据（保持「数据不足则不插补」的既有语义），但显式告警以便定位。
+      if (any(missing_idx)) {
+        warning(sprintf(
+          paste0("Feed imputation skipped for animal %s: only %d valid day(s) (< 10), ",
+                 "%d NA day(s) left unfilled; downstream sum(na.rm = TRUE) treats them as 0"),
+          id, sum(!missing_idx), sum(missing_idx)
+        ), call. = FALSE)
+      }
+      next
+    }
 
     # Identify discrete vs continuous missing
     missing_runs <- rle(missing_idx)
@@ -80,6 +92,14 @@
       if (!is.na(med_val)) {
         dt[idx[still_na], daily_feed_g := med_val]
         dt[idx[still_na], is_imputed_feed := TRUE]
+      } else {
+        # issue #32：进入本分支需 ≥10 个有效点（见上方 next 守卫），故中位数
+        # 恒非 NA、此处理论不可达；保留为防御性告警，避免将来改守卫后
+        # 残留 NA 再次静默流向 sum(na.rm = TRUE)
+        warning(sprintf(
+          "Feed imputation fallback failed for animal %s: %d NA day(s) left unfilled",
+          id, length(still_na)
+        ), call. = FALSE)
       }
     }
   }

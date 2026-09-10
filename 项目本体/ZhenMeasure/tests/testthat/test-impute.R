@@ -193,3 +193,47 @@ test_that("feed imputation survives degenerate FCR fit data (issue #11)", {
   expect_true(all(is.finite(result$daily_feed_g)))
   expect_equal(which(result$is_imputed_feed), 9:12)
 })
+
+test_that("feed imputation warns when NA would silently be summed as 0 (issue #32)", {
+  skip_if_not_installed("data.table")
+
+  # 有效采食天 < 10：不建模，残留 NA 会被下游 sum(daily_feed_g, na.rm = TRUE)
+  # 静默当作 0，ADFI 系统性偏低且无标记。修复后必须显式告警。
+  n <- 29
+  dt <- data.table::data.table(
+    animal_id = "A001",
+    record_date = seq.Date(as.Date("2024-01-01"), by = "day", length.out = n),
+    daily_feed_g = c(rep(NA_real_, 20), 1000 + 50 * seq_len(9)),
+    daily_weight_g = 40000 + 300 * seq_len(n)
+  )
+
+  expect_warning(
+    res <- ZhenMeasure:::.impute_feed_national_v2(
+      data.table::copy(dt), ZhenM_default_config("national_standard")
+    ),
+    "Feed imputation skipped for animal A001"
+  )
+  # 告警路径不改数据：NA 原样保留、不打插补标记
+  expect_equal(sum(is.na(res$daily_feed_g)), 20L)
+  expect_equal(sum(res$is_imputed_feed), 0L)
+})
+
+test_that("feed imputation fills every NA once valid points reach the threshold (issue #32)", {
+  skip_if_not_installed("data.table")
+
+  n <- 30
+  dt <- data.table::data.table(
+    animal_id = "A001",
+    record_date = seq.Date(as.Date("2024-01-01"), by = "day", length.out = n),
+    daily_feed_g = c(rep(NA_real_, 20), 1000 + 50 * seq_len(10)),
+    daily_weight_g = 40000 + 300 * seq_len(n)
+  )
+
+  res <- suppressWarnings(ZhenMeasure:::.impute_feed_national_v2(
+    data.table::copy(dt), ZhenM_default_config("national_standard")
+  ))
+
+  # ≥10 有效点 → 中位数兜底恒可用，不留残留 NA
+  expect_false(any(is.na(res$daily_feed_g)))
+  expect_equal(sum(res$is_imputed_feed), 20L)
+})
