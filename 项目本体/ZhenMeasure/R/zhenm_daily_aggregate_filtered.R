@@ -368,8 +368,11 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
   data.table::setorder(dt, animal_id, record_date)
 
   ids <- unique(dt$animal_id)
+  # issue #36：循环外建「个体 → 行号」查表，取代循环内的全表扫描。
+  # 循环体只通过 data.table::set() 改 daily_feed_g 的值，nrow 与行序不变。
+  rows_by_id <- .build_row_index(dt)
   for (id in ids) {
-    idx <- which(dt$animal_id == id)
+    idx <- .row_index_of(rows_by_id, id)
     w <- dt$daily_weight_g[idx] / 1000            # kg
     f <- dt$daily_feed_g[idx]
     d <- as.numeric(dt$record_date[idx] - min(dt$record_date[idx]))

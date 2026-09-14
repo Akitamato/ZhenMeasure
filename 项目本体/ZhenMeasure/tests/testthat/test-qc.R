@@ -771,3 +771,33 @@ test_that("LMM 校正不按引用改写调用方传入的 raw_dt（issue #30）"
   expect_false("is_feed_normal_record" %in% names(raw))
   expect_identical(names(raw), before)
 })
+
+test_that(".build_row_index / .row_index_of 与 which(animal_id == id) 等价（issue #36）", {
+  skip_if_not_installed("data.table")
+
+  # 故意乱序、含重复 id，且首行不是字典序最小的 id
+  dt <- data.table::data.table(
+    animal_id = c("B", "A", "B", "C", "A", "B"),
+    record_date = as.Date("2024-01-01") + 0:5,
+    v = 1:6
+  )
+  before <- data.table::copy(dt)
+  rows <- .build_row_index(dt)
+
+  # 与原实现（每次循环内全表扫 which）逐个体等价——含每组内升序
+  for (id in unique(dt$animal_id)) {
+    expect_identical(.row_index_of(rows, id), which(dt$animal_id == id))
+  }
+
+  # 查表建好后不改动调用方的表（nrow 与行序均不变）
+  expect_identical(dt, before)
+
+  # 边界：不存在的 id 与 NA 返回 integer(0)（与 which() 的 NA 口径一致）；
+  # 非标量 id 不是本助手的契约，返回 integer(0) 而不是静默取并集
+  expect_identical(.row_index_of(rows, "ZZZ"), integer(0))
+  expect_identical(.row_index_of(rows, NA_character_), integer(0))
+  expect_identical(.row_index_of(rows, c("A", "B")), integer(0))
+
+  # 元素取回的是原表位置，可直接用于 data.table 的 i
+  expect_identical(dt[.row_index_of(rows, "A"), v], c(2L, 5L))
+})

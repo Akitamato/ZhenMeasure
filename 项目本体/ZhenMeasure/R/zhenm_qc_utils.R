@@ -114,6 +114,40 @@
   return(dt)
 }
 
+#' Build an animal_id -> row-index lookup (issue #36)
+#'
+#' 循环内反复 `which(dt$animal_id == id)` 是 O(头数 × 行数) 的全表扫描：
+#' 扬翔生产规模（668 头 × 179 万行）约 12 亿次比较，实测单这一句 8.1 s
+#' （改用查表 0.35 s，23×）。改为循环外建表一次、循环内按 id 查表。
+#'
+#' 关键约束：返回的行号在每组内保持升序，且**不改变表序**，因此所有
+#' `dt[idx, ...] :=` / `data.table::set(dt, idx, ...)` 形式的按行号回写
+#' 语义与 which() 完全一致（不采用 setkey 方案，它会重排表序）。
+#'
+#' @param dt 数据表
+#' @param id_col 个体列名
+#' @return 具名 list，名字为个体 ID，值为该个体在 dt 中的升序行号向量
+#' @keywords internal
+.build_row_index <- function(dt, id_col = "animal_id") {
+  split(seq_len(nrow(dt)), dt[[id_col]])
+}
+
+#' Look up one animal's row indices (issue #36)
+#'
+#' `which(dt$animal_id == id)` 的等价替代。id 为 NA 或不存在时返回
+#' `integer(0)`——与 which() 的降级行为一致（NA 参与比较得到 NA，
+#' which() 丢弃 NA 后返回空向量），避免 `[[NA_character_]]` 抛错。
+#'
+#' @param rows_by_id `.build_row_index()` 的返回值
+#' @param id 单个个体 ID
+#' @return 该个体的升序行号向量；无匹配时 integer(0)
+#' @keywords internal
+.row_index_of <- function(rows_by_id, id) {
+  if (length(id) != 1L || is.na(id)) return(integer(0))
+  v <- rows_by_id[[as.character(id)]]
+  if (is.null(v)) integer(0) else v
+}
+
 #' Initialize QC flag columns
 #'
 #' Initialize QC flag columns for national_standard method

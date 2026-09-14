@@ -138,6 +138,13 @@ ZhenM_qc_weight_standard <- function(standard_records, qc_method = "national_sta
   # Robust regression weight-based QC (Task 2.6)
   ids <- unique(dt$animal_id)
   pb <- .zhenm_progress(length(ids), "Weight QC (Standard)") # Progress bar
+
+  # issue #36：循环内原为 idx <- which(dt$animal_id == id)，每头一次全表扫描。
+  # 本阶段是扬翔生产规模下核心链路的头号热点（占比 53–58%），单这一句在
+  # 668 头 × 179 万行上实测 8.1 s。改为循环外建表一次、循环内查表。
+  # 循环体内 dt 只会被 set()/:= 追加列，nrow 与行序自始至终不变，故预算的行号
+  # 全程有效（含 dt[weight_records$row_idx, ...] 这类按行号回写）。
+  rows_by_id <- .build_row_index(dt)
   
   rlm_processed_count <- 0
   rlm_skipped_count <- 0
@@ -146,7 +153,7 @@ ZhenM_qc_weight_standard <- function(standard_records, qc_method = "national_sta
   for (id in ids) {
     .zhenm_progress_tick(pb)
     
-    idx <- which(dt$animal_id == id)
+    idx <- .row_index_of(rows_by_id, id)
     sub <- dt[idx]
 
     # Get all weight records and their dates (not daily average), add row index for exact matching

@@ -60,8 +60,11 @@ ZhenM_impute_feed <- function(daily_records, impute_method = "national_standard"
   if (!"is_imputed_wt" %in% names(dt)) dt[, is_imputed_wt := FALSE]
 
   ids <- unique(dt$animal_id)
+  # issue #36：循环外建「个体 → 行号」查表，取代循环内的全表扫描。
+  # 排序已在循环前完成，循环内只按行号回写，nrow 与行序不变。
+  rows_by_id <- .build_row_index(dt)
   for (id in ids) {
-    idx <- which(dt$animal_id == id)
+    idx <- .row_index_of(rows_by_id, id)
     sub <- dt[idx]
 
     data.table::setorder(sub, record_date)
