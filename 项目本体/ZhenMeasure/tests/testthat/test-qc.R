@@ -801,3 +801,58 @@ test_that(".build_row_index / .row_index_of 与 which(animal_id == id) 等价（
   # 元素取回的是原表位置，可直接用于 data.table 的 i
   expect_identical(dt[.row_index_of(rows, "A"), v], c(2L, 5L))
 })
+
+test_that(".correct_feed_records 是纯函数：不复制整表、不改写调用方的表（issue #38）", {
+  skip_if_not_installed("data.table")
+
+  # 两头个体，各自的干净采食量不同（300 vs 600），用来锁死「逐个体 P99」的口径：
+  # 若封顶阈值串到别的个体，B 的高值会被压到 A 的 P99。
+  dt <- data.table::data.table(
+    animal_id = c(rep("A", 100), rep("B", 100), "A", "B"),
+    record_date = as.Date("2024-01-01"),
+    feed_g = c(rep(300, 100), rep(600, 100), 9000, 9000),
+    duration_sec = 300,
+    is_outlier_feed = c(rep(FALSE, 200), TRUE, TRUE),
+    flag_feed_too_high = c(rep(FALSE, 200), TRUE, TRUE)
+  )
+  before <- data.table::copy(dt)
+  names_before <- names(dt)
+
+  cf <- .correct_feed_records(dt, speed_max = 170)
+
+  # 纯函数契约：调用方的表逐字节不变，且不残留 feed_corrected / feed_p99 / .cap
+  expect_identical(dt, before)
+  expect_identical(names(dt), names_before)
+
+  expect_true(cf$success)
+  expect_length(cf$feed_corrected, nrow(dt))
+  expect_equal(cf$feed_corrected[1:100], rep(300, 100))       # 干净记录不动
+  expect_equal(cf$feed_corrected[101:200], rep(600, 100))
+  expect_equal(cf$feed_corrected[201], 300)                   # A 的 9000 → A 的 P99
+  expect_equal(cf$feed_corrected[202], 600)                   # B 的 9000 → B 的 P99
+})
+
+test_that(".correct_feed_records 五类 flag 的物理规则（issue #38 重构后口径不变）", {
+  skip_if_not_installed("data.table")
+
+  dt <- data.table::data.table(
+    animal_id = "A",
+    record_date = as.Date("2024-01-01"),
+    feed_g = c(300, -50, 20, 400, 5000, 9000),
+    duration_sec = c(300, 300, 1000, 300, 100, 300),
+    is_outlier_feed = c(FALSE, TRUE, TRUE, TRUE, TRUE, TRUE),
+    flag_feed_negative = c(FALSE, TRUE, FALSE, FALSE, FALSE, FALSE),
+    flag_speed_extreme_low_feed = c(FALSE, FALSE, TRUE, FALSE, FALSE, FALSE),
+    flag_speed_zero_long_duration = c(FALSE, FALSE, FALSE, TRUE, FALSE, FALSE),
+    flag_speed_too_fast = c(FALSE, FALSE, FALSE, FALSE, TRUE, FALSE),
+    flag_feed_too_high = c(FALSE, FALSE, FALSE, FALSE, FALSE, TRUE)
+  )
+  cf <- .correct_feed_records(dt, speed_max = 170)
+  v <- cf$feed_corrected
+
+  expect_equal(v[2], 0)          # 负值 → 0
+  expect_equal(v[3], 0)          # 极高速小采食 → 0
+  expect_equal(v[4], 0)          # 长时间零速 → 0
+  expect_equal(v[5], 170 * 100 / 60)  # 速度过快 → speed_max × 时长/60
+  expect_equal(v[6], 300)        # 单次采食过高 → 干净记录 P99（唯一干净值 300）
+})

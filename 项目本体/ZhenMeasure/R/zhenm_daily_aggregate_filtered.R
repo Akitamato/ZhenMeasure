@@ -244,7 +244,7 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
     # 只补噪声置零类损失，不对已被物理封顶的记录二次补偿）
     result <- .apply_feed_lmm_correction(result, dt, ns_cfg, stack = run_lmm_stack)
   } else {
-    # 跳过日级 LMM 校正，仅保留 6kg 日上限校验（保证各路径口径一致）
+    # 跳过日级 LMM 校正，仅保留日采食量上限校验（保证各路径口径一致）
     result <- .finalize_daily_feed(result)
   }
   # =================================================
@@ -278,6 +278,7 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
   dt[]
 }
 
+
 #' Record-level feed intake correction by flag type (physics caps)
 #'
 #' Corrects the feed intake of flagged records using flag-specific physical
@@ -294,8 +295,6 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
 #'   aligned with dt rows.
 #' @keywords internal
 .correct_feed_records <- function(dt, speed_max = 170) {
-  dt <- data.table::copy(dt)
-
   feed_col <- if ("feed_g" %in% names(dt)) "feed_g"
               else if ("Feed_intake" %in% names(dt)) "Feed_intake" else NULL
   if (is.null(feed_col) || !"is_outlier_feed" %in% names(dt)) {
@@ -305,39 +304,57 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
   dur_col <- if ("duration_sec" %in% names(dt)) "duration_sec"
              else if ("Duration" %in% names(dt)) "Duration" else NULL
 
+  # issue #38：本函数是纯函数——只读 dt、只返回一个向量，从不改写调用方的表。
+  # 原实现在入口做 data.table::copy(整表)，只为拿到一块可写的 feed_corrected 列；
+  # 实测这次 copy 使进程峰值 RSS 增加 264 MB（1522 → 1786 MB，/usr/bin/time -v
+  # 分进程计时，扬翔 668 头 179 万条）。改为直接对被 flag 掩码命中的位置做向量
+  # 运算：不改 dt、不产生整表副本，返回值与原实现逐位一致。
+  #
   # 初始保留原采食量（被 flag 记录不置零，只对「明显离谱」的封顶/归零）
-  dt[, feed_corrected := as.numeric(get(feed_col))]
+  fc <- as.numeric(dt[[feed_col]])
 
   # speed_max 由调用方从 config 传入（issue #12），缺省 170 与
   # zhenm_config_defaults.R 的 speed_max 保持一致
 
   # 1) 纯噪声 → 0
   if ("flag_feed_negative" %in% names(dt)) {
-    dt[flag_feed_negative == TRUE, feed_corrected := 0]
+    fc[dt[["flag_feed_negative"]] %in% TRUE] <- 0
   }
   if ("flag_speed_extreme_low_feed" %in% names(dt)) {
-    dt[flag_speed_extreme_low_feed == TRUE, feed_corrected := 0]
+    fc[dt[["flag_speed_extreme_low_feed"]] %in% TRUE] <- 0
   }
   if ("flag_speed_zero_long_duration" %in% names(dt)) {
-    dt[flag_speed_zero_long_duration == TRUE, feed_corrected := 0]
+    fc[dt[["flag_speed_zero_long_duration"]] %in% TRUE] <- 0
   }
 
   # 2) 速度过快 → 按生理上限封顶：feed ≤ speed_max × duration/60
   if ("flag_speed_too_fast" %in% names(dt) && !is.null(dur_col)) {
-    dt[, .cap := speed_max * as.numeric(get(dur_col)) / 60]
-    dt[flag_speed_too_fast == TRUE & !is.na(.cap) & .cap > 0,
-       feed_corrected := pmin(feed_corrected, .cap)]
-    dt[, .cap := NULL]
+    .cap <- speed_max * as.numeric(dt[[dur_col]]) / 60
+    hit <- which(dt[["flag_speed_too_fast"]] %in% TRUE & !is.na(.cap) & .cap > 0)
+    if (length(hit) > 0) fc[hit] <- pmin(fc[hit], .cap[hit])
   }
 
   # 3) 单次采食过高 → 封顶到个体 P99（用干净记录计算，避免被异常值抬高）
   if ("flag_feed_too_high" %in% names(dt)) {
-    dt[, feed_p99 := stats::quantile(
-          feed_corrected[is_outlier_feed == FALSE & feed_corrected > 0],
-          0.99, na.rm = TRUE), by = animal_id]
-    dt[flag_feed_too_high == TRUE & !is.na(feed_p99),
-       feed_corrected := pmin(feed_corrected, feed_p99)]
-    dt[, feed_p99 := NULL]
+    # 池子口径与原实现逐字一致：已过第 1、2 步的 feed_corrected、且非采食异常、
+    # 且为正。NA 的比较结果（NA 掩码元素）被 quantile(na.rm=TRUE) 丢弃，这里
+    # 直接以 !is.na 显式排除，取值集合相同。
+    keep <- !is.na(dt[["is_outlier_feed"]]) &
+            dt[["is_outlier_feed"]] == FALSE &
+            !is.na(fc) & fc > 0
+    idx_hi <- which(dt[["flag_feed_too_high"]] %in% TRUE)
+    if (any(keep) && length(idx_hi) > 0) {
+      # 只物化 2 列（个体 + 采食量）的临时表算分组 P99，不再复制整张宽表
+      pool <- data.table::setDT(list(animal_id = dt[["animal_id"]][keep], .fc = fc[keep]))
+      p99 <- pool[, .(.p99 = stats::quantile(.fc, 0.99, na.rm = TRUE)), by = animal_id]
+      p99v <- p99$.p99[match(as.character(dt[["animal_id"]][idx_hi]),
+                             as.character(p99$animal_id))]
+      ok <- !is.na(p99v)
+      if (any(ok)) {
+        j <- idx_hi[ok]
+        fc[j] <- pmin(fc[j], p99v[ok])
+      }
+    }
   }
 
   # 4) 时长类异常 / speed_too_slow / STL → 保留原值（时长错但采食量可能对），无需处理
@@ -345,7 +362,7 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
   n_corrected <- sum(dt$is_outlier_feed == TRUE, na.rm = TRUE)
   message(sprintf("Record-level feed correction: corrected %d flagged records via physics rules.", n_corrected))
 
-  list(success = TRUE, feed_corrected = dt$feed_corrected)
+  list(success = TRUE, feed_corrected = fc)
 }
 
 #' FCR anchor correction: cap daily feed intake by national FCR ranges
@@ -435,9 +452,10 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
 #' @keywords internal
 .apply_feed_lmm_correction <- function(daily_dt, raw_dt, ns_cfg = NULL, stack = FALSE) {
   dt <- data.table::copy(daily_dt)
-  # issue #30：下面要给 raw_dt 加 is_feed_normal_record 列，先 copy 避免按引用
-  # 改写调用方的表（与 daily_dt 的处理一致）
-  raw_dt <- data.table::copy(raw_dt)
+  # issue #38：原实现在此 copy(整表) 的唯一目的是给 raw_dt 按引用加一列
+  # is_feed_normal_record（issue #30 为防止改写调用方表的防御性副本）。改为在
+  # 局部向量上算「正常记录」掩码，raw_dt 全程只读——既保留 issue #30 的不改写
+  # 契约，也不再产生一份 32 列 × 179 万行的整表副本。
 
   # 10 error flags for single record anomalies (including STL time series flag)
   err_flags <- c("flag_duration_negative", "flag_duration_too_long",
@@ -452,32 +470,43 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
                    "flag_speed_zero_long_duration")
   
   # ==== 1. Extract feed intake of normal records and anomaly occurrence flags ====
-  # Mark "normal" records in raw_dt (i.e., all 9 error flags are FALSE AND not an outlier)
-  raw_dt[, is_feed_normal_record := TRUE]
+  # Mark "normal" records (i.e., all 10 error flags are FALSE AND not an outlier)。
+  # 口径与原实现逐字一致：flag 列缺失视为「未标记」，NA 视为「未被判异常」而计入
+  # 正常（原实现只把 == TRUE 的位置置 FALSE，NA 因此保持 TRUE）。
+  normal_rec <- rep(TRUE, nrow(raw_dt))
   # Exclude records already flagged as feed outliers by QC
   if ("is_outlier_feed" %in% names(raw_dt)) {
-    raw_dt[is_outlier_feed == TRUE, is_feed_normal_record := FALSE]
+    normal_rec <- normal_rec & !(raw_dt[["is_outlier_feed"]] %in% TRUE)
   }
   for (flg in err_flags) {
     if (flg %in% names(raw_dt)) {
-      raw_dt[get(flg) == TRUE, is_feed_normal_record := FALSE]
+      normal_rec <- normal_rec & !(raw_dt[[flg]] %in% TRUE)
     }
   }
-  
-  # Aggregate daily occurrence of the 9 anomalies and sum of normal feed intake
+
+  # Aggregate daily occurrence of the 10 anomalies and sum of normal feed intake
   feed_col <- if ("feed_g" %in% names(raw_dt)) "feed_g" else if ("Feed_intake" %in% names(raw_dt)) "Feed_intake" else NULL
-  
+
   if (is.null(feed_col)) {
     # 无 feed 列时跳过记录级纠正与 LMM，但出口校验仍要走（issue #21：原先直接
     # return 使此路径缺少 flag_daily_feed_over_limit 列，与另两条出口口径不一致）
     return(.finalize_daily_feed(dt))
   }
-  
+
   # We do not exclude flag_feed_out_of_range, retaining this rule
-  # issue #23：原用 .SD[[feed_col]] 会按组物化全部列再取一列；get(feed_col) 只取
-  # 目标列，结果相同（分组 j 内 get() 取到的即该组的目标列向量）
-  daily_features <- raw_dt[, .(
-    normal_feed_sum = sum(get(feed_col)[is_feed_normal_record == TRUE], na.rm = TRUE)
+  # issue #23：原用 .SD[[feed_col]] 会按组物化全部列再取一列；现用只含 4 列的
+  # 临时表（三列与原表共享底层向量，仅掩码是新分配的）取分组和。
+  # by 仍覆盖全部 (animal_id, record_date) 组，故「当天无正常记录」的组仍得 0
+  # （原实现 sum(numeric(0), na.rm = TRUE) 亦为 0）；若改成先按掩码滤行再分组，
+  # 这些组会整体消失、merge 后变 NA，口径就不一致了。
+  slim <- data.table::setDT(list(
+    animal_id   = raw_dt[["animal_id"]],
+    record_date = raw_dt[["record_date"]],
+    .feed       = raw_dt[[feed_col]],
+    .normal     = normal_rec
+  ))
+  daily_features <- slim[, .(
+    normal_feed_sum = sum(.feed[.normal], na.rm = TRUE)
   ), by = .(animal_id, record_date)]
 
   dt <- merge(dt, daily_features, by = c("animal_id", "record_date"), all.x = TRUE)
