@@ -237,13 +237,16 @@ ZhenM_attach_measurement_day <- function(dt) {
 .read_yangxiang_file <- function(file, format_info) {
   # issue #16：表头跳过行数可由 format 文件 header_skip 配置，默认 1（历史行为）
   hdr_skip <- .format_header_skip(format_info, default = 1)
-  # Read with all text columns first
-  tmp <- readxl::read_xlsx(file, sheet = 1, n_max = 0, skip = hdr_skip)
-  n_col <- ncol(tmp)
-  col_types <- rep("text", n_col)
 
+  # issue #35：原先先做一次 read_xlsx(n_max = 0) 只为拿 ncol、再全量读一次。
+  # n_max = 0 并不减少解析量——readxl 仍要解压并解析整个 sheet 才能确定列结构，
+  # 这次探测在 47.9 MB / 55.9 万行的扬翔文件上实测占单文件读取耗时约 30%
+  # （18.0 s → 12.7 s，两轮交替计时中位数）。列类型传单值 "text" 时 readxl 会
+  # 自动循环到实际列数，因此无需预先知道列数，探测调用可以直接删掉。
+  # 等价性已逐格验证：559,114 × 24 个单元格与改前零差异。
+  # 注：单值形式本身不带来额外提速（实测在噪声内），它的意义是让探测成为多余。
   raw <- data.table::as.data.table(
-    readxl::read_xlsx(file, sheet = 1, col_types = col_types, skip = hdr_skip)
+    readxl::read_xlsx(file, sheet = 1, col_types = "text", skip = hdr_skip)
   )
 
   raw[, source_file := basename(file)]

@@ -171,8 +171,9 @@ ZhenM_convert_yangxiang_to_standard <- function(data_path, format_path) {
   }
 
   all_data <- lapply(files, function(file) {
-    # issue #15：批量读取补充文件级错误定位（如 n_max 探测与全量读取列数
-    # 不一致导致的 readxl 列数报错），否则失败文件无从查找
+    # issue #15：批量读取补充文件级错误定位，否则失败文件无从查找。
+    # （原注释举的例子是「n_max 探测与全量读取列数不一致」，该探测已在
+    # issue #35 中删除；定位能力本身与此无关，保留。）
     tryCatch(
       .read_yangxiang_file(file, format_info),
       error = function(e) stop(
