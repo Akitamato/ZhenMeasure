@@ -116,3 +116,35 @@ test_that("ZhenM_merge_config warns on unknown keys (issue #17)", {
     "national_standard.gompertz"
   )
 })
+
+test_that("dt_threads 走 config 且管线退出时还原线程数（issue #37）", {
+  skip_if_not_installed("data.table")
+
+  expect_equal(ZhenM_default_config("national_standard")$dt_threads, 1L)
+  expect_equal(ZhenM_merge_config(NULL, "national_standard")$dt_threads, 1L)
+  # 用户可覆盖
+  expect_equal(ZhenM_merge_config(list(dt_threads = 4L), "national_standard")$dt_threads, 4L)
+
+  before <- data.table::getDTthreads()
+  on.exit(data.table::setDTthreads(before), add = TRUE)
+
+  # setDTthreads() 会把请求值截到可用核数，故先在测试里算出「实际会被设成几」
+  data.table::setDTthreads(2L)
+  expected <- data.table::getDTthreads()
+  data.table::setDTthreads(before)
+
+  # 用一个必然失败的路径跑管线：只关心入口是否按 config 设了线程、
+  # 以及 on.exit 是否把调用方的原值还回去（不依赖跑通全流程）。
+  lf <- tempfile(fileext = ".txt")
+  suppressWarnings(try(
+    run_zhen_measure(data_path = tempdir(), data_type = "FIRE",
+                     format_path = tempfile(), log_file = lf,
+                     config = list(dt_threads = 2L)),
+    silent = TRUE))
+
+  expect_equal(data.table::getDTthreads(), before)
+  if (file.exists(lf)) {
+    txt <- paste(readLines(lf, warn = FALSE), collapse = "\n")
+    expect_true(grepl(paste0("data.table 线程数: ", expected), txt, fixed = TRUE))
+  }
+})

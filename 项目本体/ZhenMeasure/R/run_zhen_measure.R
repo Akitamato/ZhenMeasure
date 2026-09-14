@@ -52,6 +52,21 @@ run_zhen_measure <- function(data_path, data_type, format_path,
 
   cfg <- ZhenM_merge_config(config, qc_method)
 
+  # data.table 线程数（issue #37）：管线入口显式设定、退出时还原调用方原值，
+  # 避免「用完不管」把全局状态泄漏给同一进程内的后续调用。
+  #   cfg$dt_threads = 1  → 串行（默认；结果与机器核数无关，可复现）
+  #   cfg$dt_threads = 0  → 用满可用核（data.table 自身默认）
+  #   cfg$dt_threads = NULL → 不干预
+  # 默认取 1 的依据：本机（32 逻辑核，data.table 默认只用 16）实测多线程对
+  # 扬翔 668 头为负收益，详见 zhenm_config_defaults.R 的 dt_threads 注释与 issue #37。
+  .dt_threads_before <- data.table::getDTthreads()
+  on.exit(data.table::setDTthreads(.dt_threads_before), add = TRUE)
+  .dt_threads_want <- cfg$dt_threads
+  if (!is.null(.dt_threads_want) && length(.dt_threads_want) == 1L &&
+      is.numeric(.dt_threads_want) && !is.na(.dt_threads_want)) {
+    data.table::setDTthreads(as.integer(.dt_threads_want))
+  }
+
   # 版本号从包元数据读取，避免与 DESCRIPTION 漂移（V1.1.3 前此处硬编码，已落后两个版本）
   pkg_banner <- paste0(
     "ZhenMeasure V",
@@ -68,9 +83,11 @@ run_zhen_measure <- function(data_path, data_type, format_path,
       logger$info(paste0("数据路径: ", data_path))
       logger$info(paste0("质控方法: ", qc_method))
       logger$info(paste0("表型方法: ", phenotype_method))
+      logger$info(paste0("data.table 线程数: ", data.table::getDTthreads()))
     }
 
     message(paste0("=== ", pkg_banner, " Pipeline ==="))
+    message(paste0("data.table threads: ", data.table::getDTthreads()))
     message("Step 1: Reading data...")
     if (!is.null(logger)) logger$section("Step 1: 数据读取")
     standard_data_original <- ZhenM_read_data(data_path, data_type, format_path, birth_info_path)

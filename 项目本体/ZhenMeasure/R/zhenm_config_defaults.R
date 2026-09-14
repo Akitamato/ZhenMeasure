@@ -26,7 +26,14 @@ ZhenM_default_config <- function(qc_method = "national_standard") {
   base_config <- list(
     qc_method = "national_standard",
     impute_method = "national_standard",
-    phenotype_method = "standard_fcr"
+    phenotype_method = "standard_fcr",
+    # data.table 线程数（issue #37）。默认 1：显式串行，结果不依赖机器核数、
+    # 可复现。实测在本机（32 逻辑核，data.table 默认取 16）上，对扬翔 668 头
+    #（179 万条）这类规模，多线程的调度与合并开销超过其收益，是**负收益**，
+    # 且把 CPU 打满会挤压同机其他任务。
+    # 设 dt_threads = 0 恢复 data.table 自身的默认（用满可用核）；
+    # 设 dt_threads = NULL 则完全不干预、保持调用时的当前值。
+    dt_threads = 1L
   )
 
   base_config$national_standard <- list(
