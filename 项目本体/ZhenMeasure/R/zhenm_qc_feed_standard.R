@@ -91,6 +91,21 @@ ZhenM_qc_feed_standard <- function(standard_records, qc_method = "national_stand
   # 修复：原先误用"日采食量总和的 P99"去标"单次采食记录"，量纲错位导致该 flag 几乎永不触发。
   dt[!is.na(feed_g), flag_feed_too_high := feed_g > quantile(feed_g, 0.99, na.rm = TRUE), by = animal_id]
 
+  # 11. Feed out of plausible range (issue #40)
+  # 记录级量程判定：单次采食量落在 feed_intake_range 之外视为设备故障信号。
+  # 下游 ZhenM_standard_to_daily_filtered() 据此把「当天任一条记录出界」的整天
+  # 置为 NA（交插补），这是 roxygen / man 里承诺的「设备故障保护」分支——此前
+  # 该列在全包内没有任何生产者，分支恒不可达。
+  #
+  # 量纲陷阱：feed_intake_range 在 config 中以 **kg** 给出（默认 c(0, 6)），
+  # 而 feed_g 是 **克**。必须过 .normalize_feed_range() 再比较——V0.2.6 的 C-1
+  # 正是漏了这一步，让 c(0,6) 直接与 feed_g 相比，把所有正常记录判为异常。
+  # 归一化后默认为 [0, 6000] g；下界侧本已由 flag_feed_negative 覆盖，此处一并
+  # 表达以保持「区间」语义完整（config 可给出非 0 下界）。
+  feed_rng <- .normalize_feed_range(cfg$national_standard$feed_intake_range)
+  dt[, flag_feed_out_of_range := FALSE]
+  dt[!is.na(feed_g), flag_feed_out_of_range := feed_g < feed_rng[1] | feed_g > feed_rng[2]]
+
   # Phase 10: STL 时间序列采食量异常检测 (可选)
   dt[, flag_STL_FI := FALSE]
 
@@ -146,6 +161,11 @@ ZhenM_qc_feed_standard <- function(standard_records, qc_method = "national_stand
   }
 
   # Mark any anomaly
+  # 注：flag_feed_out_of_range 有意**不**并入 is_outlier_feed（issue #40）。
+  # 两者的下游语义不同——is_outlier_feed 表示「这条记录的采食数值不可信，需要
+  # QC 纠正/置零」，而 out_of_range 表示「设备故障，整天数据整体不可用」，
+  # 由 ZhenM_standard_to_daily_filtered() 的整日置 NA 分支单独消费。
+  # 并入 OR 会让「整天置 NA」之外还多出记录级纠正口径的变化，属无谓扩散。
   dt[, is_outlier_feed := flag_feed_negative | flag_feed_too_high |
        flag_duration_negative | flag_duration_too_long |
        flag_duration_zero_with_feed | flag_speed_too_slow |
@@ -163,6 +183,7 @@ ZhenM_qc_feed_standard <- function(standard_records, qc_method = "national_stand
   n_speed_extreme <- sum(dt$flag_speed_extreme_low_feed, na.rm = TRUE)
   n_speed_zero_long <- sum(dt$flag_speed_zero_long_duration, na.rm = TRUE)
   n_stl_fi <- sum(dt$flag_STL_FI, na.rm = TRUE)
+  n_out_of_range <- sum(dt$flag_feed_out_of_range, na.rm = TRUE)
   n_total_outlier <- sum(dt$is_outlier_feed, na.rm = TRUE)
 
   log_detail(paste0("flag_feed_negative: ", n_feed_negative))
@@ -175,13 +196,15 @@ ZhenM_qc_feed_standard <- function(standard_records, qc_method = "national_stand
   log_detail(paste0("flag_speed_extreme_low_feed: ", n_speed_extreme))
   log_detail(paste0("flag_speed_zero_long_duration: ", n_speed_zero_long))
   log_detail(paste0("flag_STL_FI: ", n_stl_fi))
+  log_detail(paste0("flag_feed_out_of_range: ", n_out_of_range,
+                    " (range [", feed_rng[1], ", ", feed_rng[2], "] g)"))
   log_info(paste0("Feed QC completed: Total outliers flagged = ", n_total_outlier, " (", round(n_total_outlier/n_total*100, 2), "%)"))
 
-  loggers$log_summary(sprintf("Feed QC (National-Standard): feed_negative=%d, feed_too_high=%d, duration_negative=%d, duration_too_long=%d, duration_zero=%d, speed_slow=%d, speed_fast=%d, speed_extreme=%d, speed_zero_long=%d, STL=%d. Total outliers=%d",
+  loggers$log_summary(sprintf("Feed QC (National-Standard): feed_negative=%d, feed_too_high=%d, duration_negative=%d, duration_too_long=%d, duration_zero=%d, speed_slow=%d, speed_fast=%d, speed_extreme=%d, speed_zero_long=%d, STL=%d, out_of_range=%d. Total outliers=%d",
                   n_feed_negative, n_feed_too_high,
                   n_duration_negative, n_duration_too_long, n_duration_zero,
                   n_speed_slow, n_speed_fast, n_speed_extreme,
-                  n_speed_zero_long, n_stl_fi, n_total_outlier))
+                  n_speed_zero_long, n_stl_fi, n_out_of_range, n_total_outlier))
   dt
 }
 

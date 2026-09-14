@@ -772,6 +772,108 @@ test_that("LMM 校正不按引用改写调用方传入的 raw_dt（issue #30）"
   expect_identical(names(raw), before)
 })
 
+test_that("feed_intake_range 归一化后产出 flag_feed_out_of_range（issue #40）", {
+  skip_if_not_installed("data.table")
+
+  # config 里 feed_intake_range 是 kg（默认 c(0, 6)），feed_g 是克。V0.2.6 的 C-1
+  # 正是漏了 kg→g 归一化，让 c(0,6) 直接与 feed_g 比较、把全部记录判为异常——
+  # 本用例的第一条断言就是该回归的守卫。
+  dt <- data.table::data.table(
+    animal_id = rep("A001", 6),
+    record_date = rep(as.Date("2024-01-01") + 0:2, each = 2),
+    feed_g = c(300, 400, 350, 320, 6001, 7000),
+    duration_sec = rep(300, 6),
+    weight_g = seq(30000, 40000, length.out = 6),
+    device_type = "YANGXIANG"
+  )
+
+  r <- ZhenM_qc_feed_standard(dt, "national_standard")
+
+  expect_true("flag_feed_out_of_range" %in% names(r))
+  # 500 g 级的正常记录绝不能被判出界（C-1 回归守卫）
+  expect_false(any(r$flag_feed_out_of_range[r$feed_g < 1000]))
+  # 默认上界 6 kg = 6000 g，闭区间：6001 出界、6000 不算
+  expect_equal(which(r$flag_feed_out_of_range), c(5L, 6L))
+})
+
+test_that("flag_feed_out_of_range 走 config（issue #40）", {
+  skip_if_not_installed("data.table")
+
+  mk <- function() {
+    data.table::data.table(
+      animal_id = rep("A001", 3),
+      record_date = as.Date("2024-01-01") + 0:2,
+      feed_g = c(300, 1200, 3000),
+      duration_sec = rep(300, 3),
+      weight_g = c(30000, 31000, 32000),
+      device_type = "YANGXIANG"
+    )
+  }
+
+  # 收紧到 2 kg（= 2000 g）：1200 仍在界内，只有 3000 出界
+  r <- ZhenM_qc_feed_standard(mk(), "national_standard",
+                              list(national_standard = list(feed_intake_range = c(0, 2))))
+  expect_equal(which(r$flag_feed_out_of_range), 3L)
+
+  # 收紧到 1 kg（= 1000 g）：1200 与 3000 都出界
+  r1 <- ZhenM_qc_feed_standard(mk(), "national_standard",
+                               list(national_standard = list(feed_intake_range = c(0, 1))))
+  expect_equal(which(r1$flag_feed_out_of_range), c(2L, 3L))
+
+  # 配置给空区间时不报错、也不误标（归一化助手退化为 (-Inf, Inf)）
+  r2 <- ZhenM_qc_feed_standard(mk(), "national_standard",
+                               list(national_standard = list(feed_intake_range = numeric(0))))
+  expect_false(any(r2$flag_feed_out_of_range))
+})
+
+test_that("日级出口上限接 config 的 feed_intake_range（issue #40）", {
+  skip_if_not_installed("data.table")
+
+  expect_equal(.feed_daily_max_g(NULL), 6000)
+  expect_equal(.feed_daily_max_g(list(feed_intake_range = c(0, 6))), 6000)
+  expect_equal(.feed_daily_max_g(list(feed_intake_range = c(0, 4))), 4000)
+  expect_equal(.feed_daily_max_g(list(feed_intake_range = NULL)), 6000)
+  # 已是克口径的大数值不会被二次放大（归一化助手自身有 <=500 判定）
+  expect_equal(.feed_daily_max_g(list(feed_intake_range = c(0, 5500))), 5500)
+
+  d <- data.table::data.table(animal_id = "A", record_date = as.Date("2024-01-01"),
+                              daily_feed_g = 4500)
+  expect_false(.finalize_daily_feed(data.table::copy(d), 6000)$flag_daily_feed_over_limit)
+  r <- .finalize_daily_feed(data.table::copy(d), 4000)
+  expect_true(r$flag_daily_feed_over_limit)
+  expect_true(is.na(r$daily_feed_g))
+})
+
+test_that("任一条记录出界 → 整天 daily_feed_g 置 NA（issue #40 文档承诺的分支）", {
+  skip_if_not_installed("data.table")
+
+  dt <- data.table::data.table(
+    animal_id = rep("A001", 6),
+    record_date = rep(as.Date("2024-01-01") + 0:2, each = 2),
+    feed_g = c(300, 400, 350, 320, 600, 7000),   # 第 3 天的 7000 g 出界
+    duration_sec = rep(300, 6),
+    weight_g = c(30000, 30100, 32000, 32100, 34000, 34100),
+    device_type = "YANGXIANG"
+  )
+  r <- ZhenM_qc_feed_standard(dt, "national_standard")
+  expect_equal(which(r$flag_feed_out_of_range), 6L)
+
+  # 关掉两条校正路径，隔离出「整日置 NA」这一个机制：
+  # 该天合计 6700 g 其实也会撞上日上限（6000 g）被置 NA，本用例要证明的是
+  # 出界记录单独就足以触发，而不是靠上限兜底。
+  d <- data.table::as.data.table(ZhenM_standard_to_daily_filtered(r, config = list(
+    national_standard = list(use_record_feed_correction = FALSE,
+                             use_lmm_feed_correction = FALSE))))
+
+  d3 <- d[d$record_date == as.Date("2024-01-03")]
+  expect_true(isTRUE(d3$has_feed_out_of_range_today))
+  expect_true(is.na(d3$daily_feed_g))
+  # 相邻的正常天不受牵连
+  d1 <- d[d$record_date == as.Date("2024-01-01")]
+  expect_false(isTRUE(d1$has_feed_out_of_range_today))
+  expect_false(is.na(d1$daily_feed_g))
+})
+
 test_that(".build_row_index / .row_index_of 与 which(animal_id == id) 等价（issue #36）", {
   skip_if_not_installed("data.table")
 
@@ -801,7 +903,6 @@ test_that(".build_row_index / .row_index_of 与 which(animal_id == id) 等价（
   # 元素取回的是原表位置，可直接用于 data.table 的 i
   expect_identical(dt[.row_index_of(rows, "A"), v], c(2L, 5L))
 })
-
 test_that(".correct_feed_records 是纯函数：不复制整表、不改写调用方的表（issue #38）", {
   skip_if_not_installed("data.table")
 

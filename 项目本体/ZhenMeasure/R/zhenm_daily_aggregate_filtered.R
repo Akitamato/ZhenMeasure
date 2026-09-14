@@ -245,7 +245,7 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
     result <- .apply_feed_lmm_correction(result, dt, ns_cfg, stack = run_lmm_stack)
   } else {
     # 跳过日级 LMM 校正，仅保留日采食量上限校验（保证各路径口径一致）
-    result <- .finalize_daily_feed(result)
+    result <- .finalize_daily_feed(result, .feed_daily_max_g(ns_cfg))
   }
   # =================================================
 
@@ -269,15 +269,32 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
 #' 只做出口把关，不筛 LMM 训练样本。
 #'
 #' @param dt 日级表（含 daily_feed_g）
+#' @param feed_max_g 日级采食量上限（g）。默认 6000（=config 默认
+#'   `feed_intake_range = c(0, 6)` kg 的上界），由 `.feed_daily_max_g()` 从
+#'   config 接线（issue #40）——此前该值硬编码，配置项改了也不生效。
 #' @return 原地修改并返回 dt
 #' @keywords internal
-.finalize_daily_feed <- function(dt) {
-  dt[, flag_daily_feed_over_limit := !is.na(daily_feed_g) & daily_feed_g > 6000]
+.finalize_daily_feed <- function(dt, feed_max_g = 6000) {
+  dt[, flag_daily_feed_over_limit := !is.na(daily_feed_g) & daily_feed_g > feed_max_g]
   dt[!is.na(daily_feed_g) & (daily_feed_g <= 0 | flag_daily_feed_over_limit == TRUE),
      daily_feed_g := NA_real_]
   dt[]
 }
 
+#' 日级采食量生理上限（g），从 config 的 feed_intake_range 上界接线（issue #40）
+#'
+#' 与 `zhenm_qc_feed_standard.R` 的记录级量程判定共用同一个配置键：config 中以
+#' kg 给出，此处过 `.normalize_feed_range()` 转克（V0.2.6 C-1 的量纲陷阱）。
+#' config 缺键或区间非法时退回 6000 g，保持既有行为。
+#'
+#' @param ns_cfg national_standard 配置列表（可为 NULL）
+#' @return 单个数值（g）
+#' @keywords internal
+.feed_daily_max_g <- function(ns_cfg) {
+  if (is.null(ns_cfg) || is.null(ns_cfg$feed_intake_range)) return(6000)
+  rng <- .normalize_feed_range(ns_cfg$feed_intake_range)
+  if (length(rng) < 2 || !is.finite(rng[2])) 6000 else as.numeric(rng[2])
+}
 
 #' Record-level feed intake correction by flag type (physics caps)
 #'
@@ -490,7 +507,7 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
   if (is.null(feed_col)) {
     # 无 feed 列时跳过记录级纠正与 LMM，但出口校验仍要走（issue #21：原先直接
     # return 使此路径缺少 flag_daily_feed_over_limit 列，与另两条出口口径不一致）
-    return(.finalize_daily_feed(dt))
+    return(.finalize_daily_feed(dt, .feed_daily_max_g(ns_cfg)))
   }
 
   # We do not exclude flag_feed_out_of_range, retaining this rule
@@ -706,7 +723,7 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
   }
 
   # ==== 4. 出口生理校验（对所有路径统一执行） ====
-  dt <- .finalize_daily_feed(dt)
+  dt <- .finalize_daily_feed(dt, .feed_daily_max_g(ns_cfg))
 
   # Clean temporary feature columns used in the process（台账列 lmm_correction_g 保留）
   cols_to_remove <- c("normal_feed_sum", "adg_g",
