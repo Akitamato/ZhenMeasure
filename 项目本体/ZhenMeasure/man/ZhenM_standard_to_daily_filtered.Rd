@@ -10,13 +10,13 @@ ZhenM_standard_to_daily_filtered(standard_records, config = NULL)
 \item{standard_records}{Standard-record-level data with QC flags}
 
 \item{config}{Optional configuration list (merged via ZhenM_merge_config). Controls the
-optional FCR anchor correction (`national_standard$use_fcr_anchor`) and the correction
-mechanism switches (`use_record_feed_correction`, `use_lmm_feed_correction`,
-stacking switch `use_lmm_stacking`, default TRUE since V1.1.4).
+optional FCR anchor correction (`national_standard$use_fcr_anchor`), the correction
+mechanism switches (`use_record_feed_correction`, `use_lmm_feed_correction`) and the
+LMM covariate truncation bounds (`lmm_trim_dfie_g`, `lmm_trim_otde_s`).
 NULL keeps default behaviour.
-三开关依赖（issue #17）：`use_lmm_feed_correction=TRUE` 仅在记录级纠正
-关闭或失败时作为日级兜底运行；记录级纠正成功时是否再跑 LMM 由
-`use_lmm_stacking` 决定，该组合下兜底开关为空操作。}
+开关依赖（issue #5 重写后）：`use_lmm_feed_correction=TRUE`（默认）时日级文献
+LMM **恒运行**，`daily_feed_g` 由它产生；记录级物理纠正的产物不再进入日值，
+只作内部对照。设 FALSE 则不跑 LMM，`daily_feed_g` 退回记录级纠正的产物。}
 }
 \value{
 A daily-level table aggregated by animal and date with daily_weight_g and enhanced feed QC

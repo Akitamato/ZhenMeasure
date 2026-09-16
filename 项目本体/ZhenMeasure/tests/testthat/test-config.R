@@ -46,32 +46,50 @@ test_that("national_standard config has required parameters", {
   expect_true(is.data.frame(cfg$fcr_ranges))
   expect_equal(nrow(cfg$fcr_ranges), 9)
 
-  # 校正机制开关默认开启
+  # 校正机制开关默认开启（issue #5 重写后：use_lmm_feed_correction 是 daily_feed_g
+  # 来源的总开关，use_record_feed_correction 降级为对照臂开关）
   expect_true(cfg$use_record_feed_correction)
   expect_true(cfg$use_lmm_feed_correction)
-  # LMM 叠加（issue #5「F 转正」）：V1.1.4 起默认开启，
-  # 设 FALSE 可退回 V1.1.1 的纯记录级物理纠正行为
-  expect_true(cfg$use_lmm_stacking)
-  expect_false(ZhenM_merge_config(
-    list(national_standard = list(use_lmm_stacking = FALSE)), "national_standard"
-  )$national_standard$use_lmm_stacking)
+
+  # LMM 协变量截尾界（Casey 2003）：对象是逐错误类型的**累计协变量**，
+  # 不是日总采食量，也不是响应
+  expect_equal(cfg$lmm_trim_dfie_g, c(0, 3500))
+  expect_equal(cfg$lmm_trim_otde_s, c(0, 5000))
 })
 
-test_that("默认 use_lmm_stacking 与显式 TRUE 等价（issue #5 F 转正）", {
-  # 转正的关键契约：不传该键时的行为必须与显式 TRUE 完全一致，
-  # 否则「默认」与「F 变体」在基准里的对应关系会断掉。
-  default_cfg <- ZhenM_merge_config(NULL, "national_standard")$national_standard
-  explicit_cfg <- ZhenM_merge_config(
-    list(national_standard = list(use_lmm_stacking = TRUE)), "national_standard"
-  )$national_standard
-  expect_identical(default_cfg$use_lmm_stacking, explicit_cfg$use_lmm_stacking)
+test_that("已移除的 use_lmm_stacking 键给出明确提示（issue #5 重写）", {
+  # 该键随 stack 分支一并退役。用户若仍传它，必须得到「已移除」的明确说明，
+  # 而不是混在「可能是拼写错误」的泛泛提示里。
+  ws <- character()
+  withCallingHandlers(
+    ZhenM_merge_config(
+      list(national_standard = list(use_lmm_stacking = TRUE)), "national_standard"
+    ),
+    warning = function(w) {
+      ws <<- c(ws, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+  # 恰好一条 warning——同一件事报两条互相矛盾的提示最误导人
+  expect_length(ws, 1L)
+  expect_match(ws, "use_lmm_stacking 已被移除")
+  expect_false(grepl("未识别的键", ws))
 
-  # 反向：显式 FALSE 必须真的能关掉（开关可达）
-  off_cfg <- ZhenM_merge_config(
-    list(national_standard = list(use_lmm_stacking = FALSE)), "national_standard"
-  )$national_standard
-  expect_false(off_cfg$use_lmm_stacking)
-  expect_true(off_cfg$use_record_feed_correction)  # 关叠加不动记录级纠正
+  # 该键不生效：与 issue #17 的其它未知键一致，modifyList 仍会把它塞进列表，
+  # 但全仓已无读取处（grep use_lmm_stacking 只剩本助手与测试）。此处锁住的是
+  # 「没有任何开关被它带偏」——传 TRUE 后日级校正开关仍是默认值。
+  merged <- suppressWarnings(ZhenM_merge_config(
+    list(national_standard = list(use_lmm_stacking = TRUE)), "national_standard"
+  ))
+  expect_true(merged$national_standard$use_lmm_feed_correction)
+
+  # 反向锁：真正的拼写错误仍要被点名
+  expect_warning(
+    ZhenM_merge_config(
+      list(national_standard = list(use_record_feed_corection = TRUE)), "national_standard"
+    ),
+    "未识别的键"
+  )
 })
 
 test_that("ZhenM_merge_config merges user config", {

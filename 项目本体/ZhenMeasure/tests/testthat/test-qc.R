@@ -107,87 +107,106 @@ test_that("ZhenM_standard_to_daily_filtered respects correction switches", {
 
   # 门控接通的运行期证据：不应出现任何 LMM 校正消息
   expect_false(any(grepl("LMM", msgs)))
+
+  # 裁定 0 的核心契约：记录级物理纠正**成功**时 LMM 也必须运行。
+  # 重写前日级 LMM 只在「记录级纠正关闭或失败」时兜底，而记录级成功恰是默认
+  # 情况——不解耦的话文献 LMM 在出厂配置下永不执行。此处用默认配置（两个开关
+  # 都 TRUE）跑同一份数据，必须看到 LMM 路径的消息（本 fixture 只有 1 头动物，
+  # 会被双门槛挡下并明确报「样本不足」，但这已证明门控被接通）。
+  msgs_def <- capture_messages(
+    result_def <- suppressWarnings(ZhenM_standard_to_daily_filtered(
+      data.table::copy(dt), list(national_standard = list())))
+  )
+  expect_true(any(grepl("LMM Feed Correction", msgs_def)))
+
+  # 反之，关掉 LMM 时记录级纠正照跑（两个开关相互独立，不是串联依赖）
+  expect_gt(result_def[record_date == as.Date("2024-01-02"), daily_feed_g], 350)
 })
 
-test_that("Improved LMM fallback: duration-proportional compensation + ledger + exit gate", {
+test_that("LMM 文献实现：校正按 +β̂x 应用、台账恒等式成立、出口生理校验独立", {
   skip_if_not_installed("lme4")
 
-  set.seed(20260826)
-  ids <- c("A001", "A002")
-  n_days <- 30
+  # issue #5 重写后的集成契约。fixture 设计（20 头 × 30 天 = 600 训练行，
+  # 过 min_train = max(30, 10×入模项数) 与 ≥10 头的双门槛）：
+  #   - 每 5 天一个「高频长时访问 + 读数损坏」的天：3 条干净记录 + 1 条
+  #     5000g/短时长记录（flag_speed_too_fast）。同一天的真实采食量随该次
+  #     停留时长上升（300 + dur/2 每餐）——这正是文献要校正的混淆结构。
+  #   - 干净天 3 条记录、无任何 flag → 全部协变量恰为 0。
+  set.seed(20260916)
+  ids <- sprintf("A%03d", 1:20)
+  n_days <- 30L
   rec_list <- list()
-  for (id in seq_along(ids)) {
-    w0 <- 30000 + 1500 * (id - 1)
+  for (i in seq_along(ids)) {
+    w0 <- 30000 + i * 500
+    slope <- 180 + 10 * i          # 个体间 ADG 有差异，避免 ADG 项零变异
     for (d in 1:n_days) {
-      n_vis <- sample(2:4, 1)
+      high <- (d %% 5) == 0
+      dur  <- if (high) sample(c(100, 150, 200), 1) else NA_real_
+      cf   <- pmax(rnorm(3, if (high) 300 + dur / 2 else 300, 20), 150)
       dt_i <- data.table::data.table(
-        animal_id = ids[id],
-        record_date = as.Date("2024-01-01") + d - 1,
-        feed_g = pmax(rnorm(n_vis, 320, 25), 150),
-        weight_g = w0 + d * 200 + rnorm(n_vis, 0, 100),
-        duration_sec = rep(300, n_vis),
-        is_outlier_feed = FALSE,
-        flag_feed_too_high = FALSE,
-        flag_speed_too_fast = FALSE
+        animal_id    = ids[i],
+        record_date  = as.Date("2024-01-01") + d - 1,
+        feed_g       = c(cf, if (high) 5000 else numeric(0)),
+        weight_g     = w0 + d * slope + rnorm(3 + high, 0, 100),
+        duration_sec = c(rep(300, 3), if (high) dur else numeric(0)),
+        is_outlier_feed  = c(rep(FALSE, 3), if (high) TRUE else logical(0)),
+        flag_speed_too_fast = c(rep(FALSE, 3), if (high) TRUE else logical(0)),
+        # 这两个 flag 恒 FALSE：训练集内零变异，应被剔除并在消息里点名
+        flag_feed_negative  = FALSE,
+        flag_feed_too_high  = FALSE
       )
-      # 注入虚高记录：feed 5000g 但时长仅 100s → speed_too_fast
-      # （真实采食量约 320g；置零路径会整条丢弃，LMM 应按时长补偿回近似真实值）
-      if (id == 1 && d %in% c(5, 10, 15, 20, 25)) {
-        dt_i$is_outlier_feed[1] <- TRUE
-        dt_i$flag_speed_too_fast[1] <- TRUE
-        dt_i$feed_g[1] <- 5000
-        dt_i$duration_sec[1] <- 100
-      }
-      if (id == 2 && d %in% c(8, 16, 24)) {
-        dt_i$is_outlier_feed[1] <- TRUE
-        dt_i$flag_speed_too_fast[1] <- TRUE
-        dt_i$feed_g[1] <- 4500
-        dt_i$duration_sec[1] <- 90
-      }
       rec_list[[length(rec_list) + 1]] <- dt_i
     }
   }
   dt <- data.table::rbindlist(rec_list)
-  # 构造一个干净但超 6kg 的天（A002 第 28 天）：验证出口生理校验仍生效，
-  # 且该天不再被从训练集中截断丢弃
+  # 干净但超 6kg 的一天：出口生理校验仍生效，且该天**不**因响应大而被剔出训练集
+  # （截尾的对象是逐类型协变量，不是响应——见 .apply_feed_lmm_correction 文档）
+  over_date <- as.Date("2024-01-01") + n_days
   dt <- data.table::rbindlist(list(dt, data.table::data.table(
-    animal_id = "A002",
-    record_date = as.Date("2024-01-01") + 27,
+    animal_id = "A001", record_date = over_date,
     feed_g = c(3300, 3300),
-    weight_g = c(31500 + 28 * 200, 31500 + 28 * 200),
+    weight_g = 30000 + 500 + (n_days + 1) * 190,
     duration_sec = c(300, 300),
-    is_outlier_feed = FALSE,
-    flag_feed_too_high = FALSE,
-    flag_speed_too_fast = FALSE
+    is_outlier_feed = FALSE, flag_speed_too_fast = FALSE,
+    flag_feed_negative = FALSE, flag_feed_too_high = FALSE
   )))
 
-  # 记录级纠正关闭（走 V1.1.0 置零路径），LMM 兜底默认开启
-  cfg <- list(national_standard = list(use_record_feed_correction = FALSE))
   msgs <- capture_messages(
-    res <- suppressWarnings(ZhenM_standard_to_daily_filtered(data.table::copy(dt), cfg))
+    res <- suppressWarnings(ZhenM_standard_to_daily_filtered(data.table::copy(dt)))
   )
 
-  # LMM 兜底确实触发，且台账列保留在输出中
+  # 默认配置（两个开关都 TRUE）下 LMM 必须真的跑起来——这是裁定 0 的核心契约：
+  # 记录级纠正成功不再是 LMM 的门控条件
   expect_true(any(grepl("LMM Feed Correction: corrected", msgs)))
-  expect_true("lmm_correction_g" %in% names(res))
+  expect_false(any(grepl("insufficient training samples|model fitting failed", msgs)))
+  # 零变异项被剔除时必须点名，不允许静默改模型规格
+  expect_true(any(grepl("zero-variance terms dropped", msgs)))
 
-  # 补偿与被丢采食时长成比例：被 flag 天的日值应高于「仅干净记录之和」，
-  # 且校正量为正（把被排除记录的真实采食量加回来）
-  inj_dates <- as.Date("2024-01-01") + c(4, 9, 14, 19, 24)   # A001 的注入日
-  clean_sum_a1 <- dt[animal_id == "A001" & is_outlier_feed == FALSE,
-                     .(clean_sum = sum(feed_g)), by = record_date]
-  m <- merge(
-    res[animal_id == "A001" & record_date %in% inj_dates,
-        .(record_date, daily_feed_g, lmm_correction_g)],
-    clean_sum_a1, by = "record_date"
-  )
-  expect_true(all(m$daily_feed_g > m$clean_sum))
-  expect_true(all(m$lmm_correction_g > 0))
+  # 台账列 + 恒等式：daily_feed_g == lmm_ef_g + lmm_correction_g（出口置 NA 的行除外）
+  expect_true(all(c("lmm_ef_g", "lmm_correction_g") %in% names(res)))
+  fin <- !is.na(res$daily_feed_g)
+  expect_gt(sum(fin), 0)
+  expect_equal(res$daily_feed_g[fin],
+               (res$lmm_ef_g + res$lmm_correction_g)[fin])
+
+  # 零校正不变量：无 flag 的天所有 ETP/OTD/FID 恰为 0 → Correction ≡ 0。
+  # 这是相对旧「叠加」路径（干净数据上也会日均改写数百克）最大的增益。
+  high_dates  <- as.Date("2024-01-01") + seq(4, by = 5, length.out = 6)
+  clean_dates <- setdiff(unique(res$record_date), c(high_dates, over_date))
+  expect_gt(length(clean_dates), 0)
+  expect_true(all(res$lmm_correction_g[res$record_date %in% clean_dates] == 0))
+
+  # 被 flag 天：校正量为正（该天真实采食随停留时长上升，模型应把它加回来）
+  expect_true(all(res[record_date %in% high_dates, lmm_correction_g] > 0))
+  # 且确实改变了日值（不再是「仅干净记录之和 + 0」）
+  expect_true(all(res[record_date %in% high_dates, daily_feed_g] >
+                    res[record_date %in% high_dates, lmm_ef_g]))
 
   # 出口生理校验：>6kg 天打标并置 NA（训练集不截断 ≠ 出口放行）
-  d28 <- as.Date("2024-01-01") + 27
-  expect_true(res[animal_id == "A002" & record_date == d28, flag_daily_feed_over_limit])
-  expect_true(is.na(res[animal_id == "A002" & record_date == d28, daily_feed_g]))
+  expect_true(res[animal_id == "A001" & record_date == over_date,
+                  flag_daily_feed_over_limit])
+  expect_true(is.na(res[animal_id == "A001" & record_date == over_date,
+                        daily_feed_g]))
 })
 
 test_that("日级采食量出口校验三条路径统一（issue #21）", {
@@ -234,76 +253,65 @@ test_that("ZhenM_generate_qc_summary produces summary", {
   expect_equal(nrow(summary), 2)
 })
 
-test_that("Stack mode: complementary LMM adds back only noise-zeroed losses", {
+test_that("校正按字面 +β̂x 应用：正系数不被跳过（issue #13 守卫已退役）", {
   skip_if_not_installed("lme4")
 
-  set.seed(20260826)
-  ids <- c("A001", "A002")
-  n_days <- 30
+  # 反向关系 fixture：被 flag 天的**干净**记录采食远高于干净天（2000 vs 900），
+  # 于是时长/占比类协变量的 β 必然被估成正号。V1.1.4 的符号守卫会把这类项整个跳过
+  # （并报 "unexpected sign" 警告），使补偿无法向上；文献 Table 1 的系数本就
+  # 有正有负（FIV-high +61.40、OTV-high +1750.0）且照用，故守卫已随 issue #5 重写
+  # 退役——本用例是它的反向回归锁。
+  set.seed(20260902)
   rec_list <- list()
-  for (id in seq_along(ids)) {
-    w0 <- 30000 + 1500 * (id - 1)
-    for (d in 1:n_days) {
-      n_vis <- sample(2:4, 1)
-      dt_i <- data.table::data.table(
-        animal_id = ids[id],
+  for (id in 1:12) {
+    idc <- sprintf("A%03d", id)
+    for (d in 1:30) {
+      flagged <- (d %% 5) == 0
+      rec_list[[length(rec_list) + 1]] <- data.table::data.table(
+        animal_id = idc,
         record_date = as.Date("2024-01-01") + d - 1,
-        feed_g = pmax(rnorm(n_vis, 320, 25), 150),
-        weight_g = w0 + d * 200 + rnorm(n_vis, 0, 100),
-        duration_sec = rep(300, n_vis),
-        is_outlier_feed = FALSE,
-        flag_speed_too_fast = FALSE,
-        flag_speed_zero_long_duration = FALSE
+        feed_g = if (flagged) c(1000, 1000, 5000) else c(300, 300, 300),
+        weight_g = 30000 + id * 1000 + d * (150 + 5 * id),
+        duration_sec = if (flagged) c(300, 300, 600) else c(300, 300, 300),
+        is_outlier_feed = if (flagged) c(FALSE, FALSE, TRUE) else c(FALSE, FALSE, FALSE),
+        flag_speed_too_fast = if (flagged) c(FALSE, FALSE, TRUE) else c(FALSE, FALSE, FALSE)
       )
-      # 注入「长时间零速」型噪声记录：物理规则会把它置 0，真实约 400g 完全丢失
-      # （A 路径损失）；stack 模式应按时长把这部分近似补回来
-      if (id == 1 && d %in% c(5, 10, 15, 20, 25)) {
-        dt_i$is_outlier_feed[1] <- TRUE
-        dt_i$flag_speed_zero_long_duration[1] <- TRUE
-        dt_i$feed_g[1] <- 400
-        dt_i$duration_sec[1] <- 600
-      }
-      if (id == 2 && d %in% c(8, 16, 24)) {
-        dt_i$is_outlier_feed[1] <- TRUE
-        dt_i$flag_speed_zero_long_duration[1] <- TRUE
-        dt_i$feed_g[1] <- 350
-        dt_i$duration_sec[1] <- 550
-      }
-      rec_list[[length(rec_list) + 1]] <- dt_i
     }
   }
   dt <- data.table::rbindlist(rec_list)
 
-  cfg_a <- list(national_standard = list())                       # A：现状默认
-  cfg_f <- list(national_standard = list(use_lmm_stacking = TRUE)) # F：叠加
-
-  msgs_a <- capture_messages(
-    res_a <- suppressWarnings(ZhenM_standard_to_daily_filtered(data.table::copy(dt), cfg_a))
+  sign_warn <- FALSE
+  msgs <- character()
+  res <- withCallingHandlers(
+    {
+      msgs <- capture_messages(
+        out <- suppressWarnings(ZhenM_standard_to_daily_filtered(data.table::copy(dt)))
+      )
+      out
+    },
+    warning = function(w) {
+      if (grepl("unexpected sign", conditionMessage(w))) {
+        sign_warn <<- TRUE
+        invokeRestart("muffleWarning")
+      }
+    }
   )
-  msgs_f <- capture_messages(
-    res_f <- suppressWarnings(ZhenM_standard_to_daily_filtered(data.table::copy(dt), cfg_f))
-  )
 
-  # A 路径不触发 LMM；F 路径触发 stack 模式并保留台账列
-  expect_false(any(grepl("LMM", msgs_a)))
-  expect_true(any(grepl("LMM Feed Correction \\(stack\\)", msgs_f)))
-  expect_false("lmm_correction_g" %in% names(res_a))
-  expect_true("lmm_correction_g" %in% names(res_f))
+  # 反向锁 1：符号守卫不再存在（不存在该警告，也不再据它跳过任何项）
+  expect_false(sign_warn)
+  # 反向锁 2：文献 LMM 跑起来了，不是被门槛挡下后留下的空台账
+  expect_true(any(grepl("LMM Feed Correction: corrected", msgs)))
 
-  # 噪声置零天：叠加后日值高于纯记录级纠正（把置零丢失的克数补回来）
-  inj_dates <- as.Date("2024-01-01") + c(4, 9, 14, 19, 24)
-  f_day <- res_f[animal_id == "A001" & record_date %in% inj_dates, daily_feed_g]
-  a_day <- res_a[animal_id == "A001" & record_date %in% inj_dates, daily_feed_g]
-  expect_true(all(f_day > a_day))
-  expect_true(all(res_f[animal_id == "A001" & record_date %in% inj_dates,
-                        lmm_correction_g] > 0))
+  # 反向锁 3：β>0 的项照常入模——被 flag 天的校正量为正（守卫生效时会被跳过，
+  # 日值将停留在「干净记录之和」2000）
+  flagged_dates <- as.Date("2024-01-01") + seq(4, 29, 5)
+  m <- res[record_date %in% flagged_dates, .(daily_feed_g, lmm_ef_g, lmm_correction_g)]
+  expect_true(all(m$lmm_correction_g > 0))
+  expect_equal(m$lmm_ef_g, rep(2000, nrow(m)))
+  expect_true(all(m$daily_feed_g > m$lmm_ef_g))
 
-  # J3 不造假：干净天上叠加模式与纯 A 逐值相同（correction 恒为 0）
-  clean_dates <- setdiff(unique(res_f$record_date), inj_dates)
-  expect_equal(
-    res_f[animal_id == "A001" & record_date %in% clean_dates, daily_feed_g],
-    res_a[animal_id == "A001" & record_date %in% clean_dates, daily_feed_g]
-  )
+  # 字面应用的结果仍须是有限值：出口校验（≤0 置 NA）是另一层，不在这里越权
+  expect_true(all(is.finite(res$daily_feed_g)))
 })
 
 test_that("record-level speed cap threads speed_max from config (issue #12)", {
@@ -340,53 +348,6 @@ test_that("record-level speed cap threads speed_max from config (issue #12)", {
 
   expect_equal(d5_def, 170 + 400)
   expect_equal(d5_cfg, 300 + 400)
-})
-
-test_that("LMM compensation sign guard skips positive beta (issue #13)", {
-  skip_if_not_installed("lme4")
-
-  set.seed(20260902)
-  rec_list <- list()
-  for (id in 1:3) {
-    idc <- sprintf("A%03d", id)
-    for (d in 1:30) {
-      flagged <- (d %% 5) == 0
-      # 反向关系：被 flag 天的干净记录采食远高于干净天（visits_n 同为 3，
-      # 体重平滑无差）→ dur 特征的 β 被估成正号
-      rec_list[[length(rec_list) + 1]] <- data.table::data.table(
-        animal_id = idc,
-        record_date = as.Date("2024-01-01") + d - 1,
-        feed_g = if (flagged) c(1000, 1000, 5000) else c(300, 300, 300),
-        weight_g = 30000 + id * 1000 + d * 150,
-        duration_sec = if (flagged) c(300, 300, 600) else c(300, 300, 300),
-        is_outlier_feed = if (flagged) c(FALSE, FALSE, TRUE) else c(FALSE, FALSE, FALSE),
-        flag_speed_too_fast = if (flagged) c(FALSE, FALSE, TRUE) else c(FALSE, FALSE, FALSE)
-      )
-    }
-  }
-  dt <- data.table::rbindlist(rec_list)
-
-  # 关记录级纠正 → 置零 + LMM 兜底路径
-  cfg <- list(national_standard = list(use_record_feed_correction = FALSE))
-  warn_hit <- FALSE
-  res <- withCallingHandlers(
-    ZhenM_standard_to_daily_filtered(data.table::copy(dt), cfg),
-    warning = function(w) {
-      if (grepl("unexpected sign", conditionMessage(w))) {
-        warn_hit <<- TRUE
-        invokeRestart("muffleWarning")
-      }
-    }
-  )
-
-  # 符号守卫触发：β>0 的特征被跳过
-  expect_true(warn_hit)
-
-  # 补偿不再向下：被 flag 天的日值 = 干净记录和（1000+1000），而非被 β>0 减小
-  flagged_dates <- as.Date("2024-01-01") + seq(4, 29, 5)
-  expect_true(all(res[record_date %in% flagged_dates, daily_feed_g] == 2000))
-  # 全程无静默 NA/负值（下限护栏 + 符号守卫共同保证）
-  expect_true(all(is.finite(res$daily_feed_g)))
 })
 
 test_that("day-level consensus rule flags systematically-off days (issue #14)", {
@@ -956,4 +917,322 @@ test_that(".correct_feed_records 五类 flag 的物理规则（issue #38 重构�
   expect_equal(v[4], 0)          # 长时间零速 → 0
   expect_equal(v[5], 170 * 100 / 60)  # 速度过快 → speed_max × 时长/60
   expect_equal(v[6], 300)        # 单次采食过高 → 干净记录 P99（唯一干净值 300）
+})
+
+# ---------------------------------------------------------------------------
+# issue #5：日级 LMM 按 Jiao et al. (2014) 重写后的契约
+# ---------------------------------------------------------------------------
+
+test_that("LMM 协变量指派表与文献预先指定的区间一致（issue #5）", {
+  spec <- ZhenMeasure:::.lmm_covariate_spec()
+
+  # 文献每类错误最多三个协变量（正文 "31 variables created from the 16 error
+  # counts" = ETP 16 + OTD 11 + FID 4）。我们的 QC 只采集 9 类（缺类型 7、
+  # 11–14），故实际 10 + 6 + 2 = 18 项（ETP 多出的 1 项是 STL 扩展）。
+  expect_equal(spec[kind == "etp", .N], 10L)
+  expect_equal(spec[kind == "otd", .N], 6L)
+  expect_equal(spec[kind == "fid", .N], 2L)
+  expect_equal(nrow(spec), 18L)
+  expect_equal(anyDuplicated(spec$term), 0L)
+  expect_true(all(spec$term == paste0(spec$kind, "_", spec$flag)))
+
+  # 文献的指派区间：ETP 给全部 16 类；OTD 给 1,2 与 6–14；FID 给 4,5 与 15,16。
+  # 下表是「文献区间 ∩ 我们采集到的类型」——7、11–14 我们没采集，故 OTD 只剩 6 项；
+  # 15、16 没采集，故 FID 只剩 2 项。
+  expect_equal(sort(unique(spec[kind == "otd", err_type])), c(1L, 2L, 6L, 8L, 9L, 10L))
+  expect_equal(sort(unique(spec[kind == "fid", err_type])), c(4L, 5L))
+  expect_equal(spec[kind == "etp" & !is.na(err_type), .N], 9L)
+  # 文献区间本身（16+11+4=31）不能被"顺手"改窄：OTD 必是 1,2 与 6–14 的子集，
+  # FID 必是 4,5 与 15,16 的子集
+  expect_true(all(spec[kind == "otd", err_type] %in% c(1:2, 6:14)))
+  expect_true(all(spec[kind == "fid", err_type] %in% c(4:5, 15:16)))
+
+  # 逐条锁住「哪种错误挂哪些协变量」——这是本次重写最容易改错的一处
+  expect_equal(sort(spec[err_type == 1L, kind]), c("etp", "otd"))
+  expect_equal(sort(spec[err_type == 2L, kind]), c("etp", "otd"))
+  expect_equal(sort(spec[err_type == 3L, kind]), "etp")
+  expect_equal(sort(spec[err_type == 4L, kind]), c("etp", "fid"))
+  expect_equal(sort(spec[err_type == 5L, kind]), c("etp", "fid"))
+  expect_equal(sort(spec[err_type == 8L, kind]), c("etp", "otd"))
+
+  # flag_STL_FI 是超出文献的扩展项（我们的 STL 检测没有文献对应），仅 ETP
+  stl <- spec[flag == "flag_STL_FI"]
+  expect_equal(nrow(stl), 1L)
+  expect_equal(stl$kind, "etp")
+  expect_true(is.na(stl$err_type))
+
+  # 未采集的类型不得出现在表里
+  expect_false(any(spec$err_type %in% c(7L, 11L, 12L, 13L, 14L), na.rm = TRUE))
+})
+
+test_that("日级协变量口径：ETP 是占比、OTD/FID 是逐类型累计量（issue #5）", {
+  raw <- data.table::data.table(
+    animal_id = rep("A001", 3),
+    record_date = rep(as.Date("2024-01-01"), 3),
+    feed_g = c(300, 400, 500),
+    duration_sec = c(100, 200, 150),
+    is_outlier_feed = c(TRUE, TRUE, FALSE),
+    flag_feed_negative   = c(TRUE, FALSE, FALSE),  # 类型 1 → ETP + OTD
+    flag_feed_too_high   = c(FALSE, TRUE, FALSE),  # 类型 2 → ETP + OTD（无 FID）
+    flag_duration_negative = c(FALSE, FALSE, FALSE) # 类型 4 → ETP + FID
+  )
+
+  feats <- ZhenMeasure:::.lmm_daily_covariates(raw)
+
+  expect_equal(nrow(feats), 1L)
+  # 响应 = 干净记录之和（被 flag 的两条不计入），干净访问数 = 1
+  expect_equal(feats$ef_dfi_g, 500)
+  expect_equal(feats$ef_n_visit, 1)
+
+  # ETP = 命中次数 / 当日**全部**访问数（3），不是有效访问数
+  expect_equal(feats$etp_flag_feed_negative, 1 / 3)
+  expect_equal(feats$etp_flag_feed_too_high, 1 / 3)
+  # OTD = 该类型命中的记录时长之和（被 flag 记录的时长，不是全部时长）
+  expect_equal(feats$otd_flag_feed_negative, 100)
+  expect_equal(feats$otd_flag_feed_too_high, 200)
+  # FID = 该类型命中的记录**原始**采食量之和；类型 2 没有 FID 项，类型 4 有
+  expect_false("fid_flag_feed_too_high" %in% names(feats))
+  expect_true("fid_flag_duration_negative" %in% names(feats))
+  expect_equal(feats$fid_flag_duration_negative, 0)
+  # 类型 1 只有 ETP + OTD，没有 FID
+  expect_false("fid_flag_feed_negative" %in% names(feats))
+
+  # 类型 4 命中时 FID 取原始值（不做任何物理纠正——raw 里那条 4000 原样进 FID）
+  raw2 <- data.table::copy(raw)
+  raw2[, flag_duration_negative := c(FALSE, FALSE, TRUE)]
+  raw2[3, feed_g := 4000]
+  feats2 <- ZhenMeasure:::.lmm_daily_covariates(raw2)
+  expect_equal(feats2$fid_flag_duration_negative, 4000)
+  # 该天三条记录各带一个 flag → 误差自由访问数为 0，响应为 0。
+  # 注意第 3 条的 is_outlier_feed 仍是 FALSE：**任一 error flag 命中即排除**，
+  # 响应不依赖 is_outlier_feed 这一列（两者是不同来源的标记）
+  expect_equal(feats2$ef_dfi_g, 0)
+  expect_equal(feats2$ef_n_visit, 0)
+  expect_equal(feats2$etp_flag_duration_negative, 1 / 3)
+})
+
+test_that("零校正不变量：无 flag 的天全部协变量为 0（issue #5）", {
+  raw <- data.table::data.table(
+    animal_id = rep(c("A001", "A002"), each = 3),
+    record_date = rep(as.Date("2024-01-01") + 0:1, each = 3),
+    feed_g = 300,
+    duration_sec = 300,
+    is_outlier_feed = FALSE
+  )
+  feats <- ZhenMeasure:::.lmm_daily_covariates(raw)
+
+  term_cols <- setdiff(names(feats), c("animal_id", "record_date", "ef_dfi_g", "ef_n_visit"))
+  expect_gt(length(term_cols), 0)
+  expect_true(all(as.matrix(feats[, ..term_cols]) == 0))
+  expect_true(all(feats$ef_dfi_g == 900))
+})
+
+test_that("ADG 是每头常数，取日体重对日序的最小二乘斜率（issue #5）", {
+  dt <- data.table::data.table(
+    animal_id = c(rep("A", 5), rep("B", 5), "C", "D", "D", "D"),
+    record_date = as.Date("2024-01-01") + c(0:4, 0:4, 0, 0:2),
+    daily_weight_g = c(30000 + 0:4 * 250, 40000 + 0:4 * 400, 35000,
+                       c(30000, NA, 30600))
+  )
+  adg <- ZhenMeasure:::.lmm_adg_per_animal(dt)
+
+  expect_equal(adg[1:5], rep(250, 5))      # 完美线性 → 斜率本身
+  expect_equal(adg[6:10], rep(400, 5))
+  expect_true(is.na(adg[11]))              # 仅 1 个体重天 → 无定义
+  expect_equal(adg[12:14], rep(300, 3))    # 缺一天的体重不影响该头的斜率
+
+  # 每头常数：同一头的每一行取值相同（含体重缺失的行，按动物回填）
+  expect_equal(length(unique(adg[1:5])), 1L)
+  expect_equal(length(unique(adg[12:14])), 1L)
+
+  # 空表 / 全 NA 不报错
+  expect_equal(ZhenMeasure:::.lmm_adg_per_animal(
+    data.table::data.table(animal_id = character(0), record_date = as.Date(character(0)),
+                           daily_weight_g = numeric(0))), numeric(0))
+  expect_true(is.na(ZhenMeasure:::.lmm_adg_per_animal(
+    data.table::data.table(animal_id = "A", record_date = as.Date("2024-01-01"),
+                           daily_weight_g = NA_real_))))
+})
+
+test_that("协变量截尾：只剔训练行、只剔逐类型协变量、不剔响应（issue #5）", {
+  skip_if_not_installed("lme4")
+
+  # 12 头 × 20 天干净数据（每天 3 条 300g 记录）
+  rec_list <- list()
+  for (i in 1:12) {
+    idc <- sprintf("A%03d", i)
+    for (d in 1:20) {
+      rec_list[[length(rec_list) + 1]] <- data.table::data.table(
+        animal_id = idc,
+        record_date = as.Date("2024-01-01") + d - 1,
+        feed_g = 300,
+        weight_g = 30000 + i * 500 + d * (180 + 10 * i),
+        duration_sec = 300,
+        is_outlier_feed = FALSE,
+        flag_duration_negative = FALSE
+      )
+    }
+  }
+  # A004–A012 第 10 天挂一条「时长负」记录（类型 4 → 有 FID），fid=500 未越界
+  for (i in 4:12) {
+    rec_list[[length(rec_list) + 1]] <- data.table::data.table(
+      animal_id = sprintf("A%03d", i),
+      record_date = as.Date("2024-01-01") + 9,
+      feed_g = 500, weight_g = 30000 + i * 500 + 10 * (180 + 10 * i),
+      duration_sec = 60, is_outlier_feed = TRUE, flag_duration_negative = TRUE
+    )
+  }
+  dt <- data.table::rbindlist(rec_list)
+
+  # ① 响应远超 3500 g 的干净天：各类型累计量都是 0，**必须留在训练集里**
+  #    （文献截的是 DFIe/OTDe 这两个协变量，不是响应；响应上限归出口管）
+  over <- data.table::data.table(
+    animal_id = "A001", record_date = as.Date("2024-01-01") + 20,
+    feed_g = 8000, weight_g = 30000 + 500 + 21 * 190,
+    duration_sec = 300, is_outlier_feed = FALSE, flag_duration_negative = FALSE
+  )
+  # ② 类型 4 的当日累计采食量 4000 g > lmm_trim_dfie_g 上界 3500 → 该行被剔
+  over_fid <- data.table::data.table(
+    animal_id = "A002", record_date = as.Date("2024-01-01") + 20,
+    feed_g = c(300, 300, 300, 4000),
+    weight_g = 30000 + 1000 + 21 * 200,
+    duration_sec = 300, is_outlier_feed = c(FALSE, FALSE, FALSE, TRUE),
+    flag_duration_negative = c(FALSE, FALSE, FALSE, TRUE)
+  )
+  dt <- data.table::rbindlist(list(dt, over, over_fid))
+  # 日级行数：12 头 × 20 天；类型 4 那条记录落在已有的一天上，不新增天；
+  # 两个 over_* 各新增 1 天（第 21 天）
+  n_daily <- 12L * 20L + 2L
+
+  msgs <- capture_messages(
+    res <- suppressWarnings(ZhenM_standard_to_daily_filtered(data.table::copy(dt)))
+  )
+  expect_true(any(grepl("LMM Feed Correction: corrected", msgs)))
+
+  # 训练行数 = 全部日行 − 1（只有 fid 越界那一行被剔）。若截尾错误地作用在响应
+  # 上，8000 g 那天也会被剔 → 少一行，本断言正是该回归的守卫。
+  expect_true(any(grepl(sprintf("train %d rows", n_daily - 1L), msgs)))
+  # 截尾只影响训练集：越界天在输出里照常有值（不被"因越界而跳过校正"）
+  fid_day <- res[animal_id == "A002" & record_date == as.Date("2024-01-01") + 20]
+  expect_false(is.na(fid_day$daily_feed_g))
+})
+
+test_that("校正失败时 daily_feed_g 与关掉 LMM 逐值相同（issue #5 铁律）", {
+  skip_if_not_installed("lme4")
+
+  # 单头 5 天：必然过不了「≥10 头」的门槛 → 拟合不发生
+  mk <- function() {
+    data.table::data.table(
+      animal_id = rep("A001", 10),
+      record_date = rep(seq.Date(as.Date("2024-01-01"), by = "day", length.out = 5), each = 2),
+      feed_g = c(300, 400, 350, 9000, 320, 380, 310, 390, 330, 370),
+      weight_g = seq(30000, 40000, length.out = 10),
+      duration_sec = rep(300, 10),
+      is_outlier_feed = c(rep(FALSE, 3), TRUE, rep(FALSE, 6)),
+      flag_feed_too_high = c(rep(FALSE, 3), TRUE, rep(FALSE, 6)),
+      is_outlier_wt = FALSE, device_type = "YANGXIANG",
+      age_day = rep(100:104, each = 2), measurement_day = rep(1:5, each = 2),
+      source_file = "t.csv", daily_feed_g = NA_real_
+    )
+  }
+
+  msgs <- capture_messages(
+    r_lmm <- suppressWarnings(ZhenM_standard_to_daily_filtered(mk()))
+  )
+  expect_true(any(grepl("insufficient training samples", msgs)))
+  # 台账列明确记为 NA（不是 0）——「没跑」与「跑了但校正量为 0」不能混淆
+  expect_true(all(is.na(r_lmm$lmm_correction_g)))
+  expect_true(all(is.na(r_lmm$lmm_ef_g)))
+
+  r_off <- suppressWarnings(ZhenM_standard_to_daily_filtered(
+    mk(), list(national_standard = list(use_lmm_feed_correction = FALSE))))
+
+  # 铁律：样本不足时**什么都不改** daily_feed_g，必须与「根本没跑 LMM」逐值相同。
+  # 若哪天有人把失败兜底改成 error-free 日和，这里会立刻变红。
+  expect_equal(r_lmm$daily_feed_g, r_off$daily_feed_g)
+  expect_gt(r_lmm[record_date == as.Date("2024-01-02"), daily_feed_g], 350)
+})
+
+test_that("设备故障天（flag_feed_out_of_range）不被 LMM 复活（issue #5）", {
+  skip_if_not_installed("lme4")
+
+  rec_list <- list()
+  for (i in 1:12) {
+    for (d in 1:20) {
+      rec_list[[length(rec_list) + 1]] <- data.table::data.table(
+        animal_id = sprintf("A%03d", i),
+        record_date = as.Date("2024-01-01") + d - 1,
+        feed_g = 300, weight_g = 30000 + i * 500 + d * (180 + 10 * i),
+        duration_sec = 300, is_outlier_feed = FALSE,
+        flag_feed_out_of_range = FALSE
+      )
+    }
+  }
+  # A001 第 5 天整天设备故障：记录出界 → 上游整天置 NA，LMM 不得把它算回来
+  fault_date <- as.Date("2024-01-01") + 4
+  rec_list[[length(rec_list) + 1]] <- data.table::data.table(
+    animal_id = "A001", record_date = fault_date, feed_g = 9000,
+    weight_g = 30000 + 500 + 5 * 190, duration_sec = 300,
+    is_outlier_feed = TRUE, flag_feed_out_of_range = TRUE
+  )
+  dt <- data.table::rbindlist(rec_list)
+
+  msgs <- capture_messages(
+    res <- suppressWarnings(ZhenM_standard_to_daily_filtered(data.table::copy(dt)))
+  )
+  expect_true(any(grepl("LMM Feed Correction: corrected", msgs)))
+
+  day <- res[animal_id == "A001" & record_date == fault_date]
+  expect_true(day$has_feed_out_of_range_today)
+  expect_true(is.na(day$daily_feed_g))
+})
+
+test_that("奇异拟合被报出且不报错（issue #5：只报不治）", {
+  skip_if_not_installed("lme4")
+
+  # 所有个体的**逐日采食序列完全相同**（同一个 20 天的确定性波动），只是体重轨迹
+  # 不同 → 各头均值恒等 → 随机截距方差落在 0 边界上（σ²_p 无识别），而残差方差
+  # 仍 > 0（固定效应解释不掉那圈日内波动）。这正是文献「ADG 猪内恒定 + 猪随机
+  # 截距」设定容易退化的失效模式（计划 R5）。
+  set.seed(7)
+  day_bump <- 30 * sin(1:20)
+  rec_list <- list()
+  for (i in 1:12) {
+    for (d in 1:20) {
+      hi <- (d %% 5) == 0
+      cf <- rep(300 + day_bump[d] + if (hi) 200 else 0, 3)
+      rec_list[[length(rec_list) + 1]] <- data.table::data.table(
+        animal_id = sprintf("A%03d", i),
+        record_date = as.Date("2024-01-01") + d - 1,
+        feed_g = c(cf, if (hi) 5000 else numeric(0)),
+        weight_g = 30000 + i * 500 + d * (180 + 10 * i),
+        duration_sec = c(rep(300, 3), if (hi) 150 else numeric(0)),
+        is_outlier_feed = c(rep(FALSE, 3), if (hi) TRUE else logical(0)),
+        flag_speed_too_fast = c(rep(FALSE, 3), if (hi) TRUE else logical(0))
+      )
+    }
+  }
+  dt <- data.table::rbindlist(rec_list)
+
+  msgs <- capture_messages(
+    res <- suppressWarnings(ZhenM_standard_to_daily_filtered(data.table::copy(dt)))
+  )
+  expect_true(any(grepl("SINGULAR FIT", msgs)))
+  # 只报不治：不做「奇异时自动降级」的隐形处理，模型规格不变，
+  # 结果照常产出有限值
+  expect_true(any(grepl("2 terms", msgs)))
+  expect_equal(nrow(res), 12L * 20L)
+  expect_true(all(is.finite(res$daily_feed_g)))
+})
+
+test_that("出口 ≤0 的天打 flag_daily_feed_nonpositive 并置 NA（issue #5）", {
+  dt <- data.table::data.table(
+    animal_id = "A001", record_date = as.Date("2024-01-01") + 0:2,
+    daily_feed_g = c(-5, 0, 3000)
+  )
+  out <- ZhenMeasure:::.finalize_daily_feed(dt)
+
+  expect_identical(out$flag_daily_feed_nonpositive, c(TRUE, TRUE, FALSE))
+  expect_identical(out$flag_daily_feed_over_limit, c(FALSE, FALSE, FALSE))
+  expect_equal(out$daily_feed_g, c(NA, NA, 3000))
 })

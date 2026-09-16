@@ -88,24 +88,26 @@ ZhenM_default_config <- function(qc_method = "national_standard") {
     use_fcr_anchor = FALSE,
     fcr_anchor_threshold = 0.5,
 
-    # 校正机制开关：默认均为 TRUE（= 现状行为）。关闭记录级物理纠正后回退
-    # 「置零」路径；关闭日级 LMM 兜底后仅保留 6kg 日上限校验。用于校正机制
-    # 消融实验（issue #5）与后续锚点修复的对照评测。
-    # 三开关依赖关系（issue #17）：
-    #   use_lmm_feed_correction=TRUE 仅在记录级纠正「关闭或失败」时兜底运行；
-    #   记录级纠正成功时是否再跑 LMM 由 use_lmm_stacking 决定，此时
-    #   use_lmm_feed_correction 为空操作。
+    # 校正机制开关。日级校正已按 Jiao et al. (2014) 重写（issue #5），
+    # 依赖关系随之改变：
+    #   use_lmm_feed_correction = TRUE（默认）→ 日级文献 LMM **恒运行**，
+    #     daily_feed_g 由它产生（= error-free 日和 + Σβ̂x）。此时
+    #     use_record_feed_correction 的产物不再进入日值，只留在内部列里
+    #     作对照臂。
+    #   use_lmm_feed_correction = FALSE → 不跑 LMM，daily_feed_g 退回记录级
+    #     物理纠正（A）的产物，仅保留出口日上限校验。用于消融对照。
     use_record_feed_correction = TRUE,
     use_lmm_feed_correction = TRUE,
 
-    # LMM 叠加模式：记录级物理纠正成功后仍串联运行改良 LMM，但只补偿物理
-    # 规则无法恢复的「噪声置零类」损失（负值/极高速小采食/长时间零速被置 0
-    # 的记录），避免对已被封顶纠正的记录二次补偿。
-    # V1.1.4 起默认 TRUE（issue #5「F 转正」）：注入式基准三设备 9/9 格
-    # 优于纯记录级纠正（A），且干净数据上几乎不出手（FIRE 0 天 / NEDAP 1 天 /
-    # 扬翔 869 天且平均改动仅 7.7 g），代价是每台设备多一次 lme4 拟合
-    # （+0.4~7.7 秒）。设 FALSE 可退回 V1.1.1 的纯记录级物理纠正行为。
-    use_lmm_stacking = TRUE,
+    # LMM 协变量截尾界（Casey 2003，经 Jiao et al. 2016 转述）：拟合前剔除
+    # 越界的**训练行**以降低极端值带来的偏差。注意被截的对象是「某一类错误
+    # 访问当日的累计量」这一**协变量**——不是当日总采食量，也不是模型响应
+    # （响应的生理上限由出口的 feed_intake_range 管，两者不是一回事）。
+    #   lmm_trim_dfie_g — FID_p：类型 4,5,15,16 的当日累计采食量 (g)
+    #   lmm_trim_otde_s — OTD_p：其余入模类型的当日累计占据时长 (s)
+    # 截尾只作用于训练集；应用端回填永不截尾，否则恰好会取消掉最需要校正的天。
+    lmm_trim_dfie_g = c(0, 3500),
+    lmm_trim_otde_s = c(0, 5000),
 
     # STL time-series feed QC (optional, disabled by default)
     use_stl_feed = FALSE,
@@ -123,6 +125,28 @@ ZhenM_default_config <- function(qc_method = "national_standard") {
   )
 
   base_config
+}
+
+#' 已移除的配置键及其说明（issue #5 重写为 Jiao et al. (2014) 文献实现）
+#'
+#' 返回命名列表「键名 → 面向用户的说明」。`ZhenM_merge_config()` 对用户实际
+#' 传入的每个已移除键发一条 warning，并把对应路径从「未识别键」列表中剔除——
+#' 否则同一件事会报两条互相矛盾的提示（一条说「可能是拼写错误」，另一条说
+#' 「已明确移除」）。
+#'
+#' @param user_config 用户配置
+#' @return 命名列表；用户未传任何已移除键时为空列表
+#' @keywords internal
+.removed_config_keys <- function(user_config) {
+  defined <- list(
+    use_lmm_stacking = paste0(
+      "config 键 national_standard$use_lmm_stacking 已被移除，设置不会生效。",
+      "日级 LMM 采食量校正已按 Jiao et al. (2014) 重写为默认路径，",
+      "不再区分「兜底」与「叠加」两种模式。如需关闭日级校正，",
+      "请使用 national_standard$use_lmm_feed_correction = FALSE。"
+    )
+  )
+  defined[intersect(names(defined), names(user_config$national_standard))]
 }
 
 #' Collect key paths in user config that are absent from defaults
@@ -166,7 +190,16 @@ ZhenM_merge_config <- function(user_config = NULL, qc_method = "national_standar
 
   if (is.null(user_config)) return(default)
 
-  unknown_keys <- .unknown_config_keys(default, user_config)
+  # 已移除的键先单独说明，并从「未识别键」里剔除（issue #5 重写）
+  removed_keys <- .removed_config_keys(user_config)
+  for (nm in names(removed_keys)) {
+    warning(removed_keys[[nm]], call. = FALSE)
+  }
+
+  unknown_keys <- setdiff(
+    .unknown_config_keys(default, user_config),
+    paste0(qc_method, ".", names(removed_keys))
+  )
   if (length(unknown_keys) > 0) {
     warning(paste0(
       "config 中存在未识别的键（可能是拼写错误，将不会生效）: ",

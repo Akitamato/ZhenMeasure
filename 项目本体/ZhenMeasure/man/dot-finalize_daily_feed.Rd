@@ -4,18 +4,25 @@
 \alias{.finalize_daily_feed}
 \title{日级采食量出口校验（issue #21）}
 \usage{
-.finalize_daily_feed(dt)
+.finalize_daily_feed(dt, feed_max_g = 6000)
 }
 \arguments{
 \item{dt}{日级表（含 daily_feed_g）}
+
+\item{feed_max_g}{日级采食量上限（g）。默认 6000（=config 默认
+`feed_intake_range = c(0, 6)` kg 的上界），由 `.feed_daily_max_g()` 从
+config 接线（issue #40）——此前该值硬编码，配置项改了也不生效。}
 }
 \value{
-原地修改并返回 dt
+原地修改并返回 dt，新增 `flag_daily_feed_over_limit` /
+  `flag_daily_feed_nonpositive` 两列
 }
 \description{
 6kg (6000g) 为猪只单日采食量生理上限：超限天打标
-`flag_daily_feed_over_limit` 并置 NA（等插补）；≤0 的天同样置 NA。三条出口
-路径（跳过 LMM / LMM 出口 / 无 feed 列提前返回）统一调用，避免口径漂移。
-只做出口把关，不筛 LMM 训练样本。
+`flag_daily_feed_over_limit` 并置 NA（等插补）；≤0 的天打标
+`flag_daily_feed_nonpositive` 后同样置 NA。三条出口路径（跳过 LMM / LMM 出口
+/ 无 feed 列提前返回）统一调用，避免口径漂移。只做出口把关，不筛 LMM 训练样本
+——注意这与 LMM 的协变量截尾是两件事：前者管**响应**的生理上限，后者管
+**逐错误类型的累计协变量**的极端值。
 }
 \keyword{internal}

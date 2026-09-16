@@ -2,43 +2,59 @@
 % Please edit documentation in R/zhenm_daily_aggregate_filtered.R
 \name{.apply_feed_lmm_correction}
 \alias{.apply_feed_lmm_correction}
-\title{LMM Feed Intake Correction Engine}
+\title{LMM Feed Intake Correction Engine（Jiao et al. 2014 文献实现）}
 \usage{
-.apply_feed_lmm_correction(daily_dt, raw_dt, ns_cfg = NULL, stack = FALSE)
+.apply_feed_lmm_correction(daily_dt, raw_dt, ns_cfg = NULL)
 }
 \arguments{
 \item{daily_dt}{Daily-level data.table (aggregated output of Step 5)}
 
 \item{raw_dt}{Standard-record-level data.table with QC flags}
 
-\item{ns_cfg}{Optional national_standard config list (read for `speed_max`)}
-
-\item{stack}{Logical; TRUE = 互补叠加模式（见上），FALSE = 兜底模式}
+\item{ns_cfg}{Optional national_standard config list (read for the two
+covariate truncation bounds)}
 }
 \value{
-Daily-level data.table with corrected daily_feed_g and ledger column
-  lmm_correction_g
+Daily-level data.table with corrected `daily_feed_g` and ledger
+  columns `lmm_ef_g` / `lmm_correction_g`
 }
 \description{
-日级兜底校正：仅在记录级物理纠正失败或被配置关闭时触发。
-Phase 1 重构（issue #5，V1.1.2）修复四个统计缺陷：
-1. 协变量加入 visits_n——异常条数与当日活动强度机械相关，不控制强度时
-   flag 系数会把「当天访问多」的效应误吸收进补偿量；
-2. 被 flag 记录改用「时长量纲特征」入模：补偿量与被丢采食时长成比例
-   （近似与丢失的真实克数成比例），而非与异常次数成比例；
-   无时长列或日级 flag（STL）自动退回计数特征；
-3. 训练集不再按 0 < normal_feed_sum ≤ 6000 截断——截断系统性丢弃大采食天，
-   让系数低估真实损失；生理上限只在出口做校验（打标 + 置 NA），不筛训练样本；
-4. 补偿加回量受物理速率约束：add-back ≤ speed_max × 被flag记录总时长 / 60
-   （把记录级物理规则的先验吸收进 LMM）。
-另新增台账列 lmm_correction_g（每日净校正值），全程可追溯。
+日级采食量校正的**唯一引擎**（issue #5 重写）。逐字复现 Jiao et al. (2014,
+*J Anim Sci* 92:2377–2386) 的线性混合模型：
 }
 \details{
-stack 模式（`use_lmm_stacking=TRUE`——V1.1.4 起为默认——且记录级纠正成功时）：在物理纠正后的
-日值上做**互补式**校正——只建模「噪声置零类」flag（负值/极高速小采食/
-长时间零速被物理规则置 0 的记录）的时长特征；已被物理封顶恢复的
-speed_too_fast / feed_too_high 不再入模，避免二次补偿。响应为纠正后的
-日值本身，校正面为加法（daily_feed_g += correction）；NA 天不复活，
-留给插补。
+Y = B_i + b1·BW + b2·ADG + Σ_p(b3p·ETP_p + b4p·OTD_p + b5p·FID_p) + P_m + e
+
+  - `Y`    = error-free daily feed intake（干净访问的当日采食量和，`ef_dfi_g`）
+  - `B_i`  = 批次固定效应 ↔ `location`
+  - `BW`   = 当日体重；`ADG` = **个体全期常数**（`.lmm_adg_per_animal()`）
+  - `ETP_p` = 类型 p 的访问**占比**（分母为当日全部访问数）
+  - `OTD_p` = 类型 p 访问的当日**累计占据时长**（秒）
+  - `FID_p` = 类型 p 访问的当日**累计采食量**（克，用原始记录值）
+  - `P_m`  = 个体随机截距 `(1 | animal_id)`
+
+协变量按文献预先指派、不做数据驱动挑选，逐类型的对应关系与文献区间校验见
+`.lmm_covariate_spec()`。我们的 QC 未采集类型 7、11–14，故实际入模 18 项。
+
+应用同文献：`Correction = Σ(α·ETP + γ·OTD + δ·FID)`、
+`daily_feed_g = ef_dfi_g + Correction`——**字面 +β̂x**。不做单侧截断、
+不加物理速率封顶、不按系数符号跳过（文献 Table 1 的系数有正有负，
+例如 FIV-high +61.40、OTV-high +1750.0）。
+
+协变量截尾（Casey 2003，经 Jiao et al. 2016 转述）：拟合前剔除
+`fid_*` / `otd_*` 越界的**训练行**，界见 config 的 `lmm_trim_dfie_g` /
+`lmm_trim_otde_s`。注意被截的是逐错误类型的**累计协变量**（文献记作
+DFIe/OTDe，e = error），**不是**当日总采食量、**也不是**响应——响应的生理
+上限由出口 `.finalize_daily_feed()` 的 `feed_intake_range` 单独把关。
+截尾只作用于训练集；应用端回填永不截尾。
+
+其余口径：
+  - 训练响应与全部协变量都用**原始**记录，与记录级物理纠正（A）无关；
+    A 的产物不进日值（见 `ZhenM_standard_to_daily_filtered()` 的门控注释）。
+  - 拟合失败或样本不足时**什么都不改** `daily_feed_g`（保留上游结果），
+    绝不回退到 error-free 日和——它系统性丢掉被 flag 记录的采食量，
+    正是本方法要消除的偏差。
+  - 台账列 `lmm_ef_g`（error-free 日和）与 `lmm_correction_g`（当日校正量）
+    保留在输出中，恒满足 `daily_feed_g == lmm_ef_g + lmm_correction_g`。
 }
 \keyword{internal}

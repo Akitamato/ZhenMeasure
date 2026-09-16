@@ -14,13 +14,13 @@
 #'
 #' @param standard_records Standard-record-level data with QC flags
 #' @param config Optional configuration list (merged via ZhenM_merge_config). Controls the
-#'   optional FCR anchor correction (`national_standard$use_fcr_anchor`) and the correction
-#'   mechanism switches (`use_record_feed_correction`, `use_lmm_feed_correction`,
-#'   stacking switch `use_lmm_stacking`, default TRUE since V1.1.4).
+#'   optional FCR anchor correction (`national_standard$use_fcr_anchor`), the correction
+#'   mechanism switches (`use_record_feed_correction`, `use_lmm_feed_correction`) and the
+#'   LMM covariate truncation bounds (`lmm_trim_dfie_g`, `lmm_trim_otde_s`).
 #'   NULL keeps default behaviour.
-#'   三开关依赖（issue #17）：`use_lmm_feed_correction=TRUE` 仅在记录级纠正
-#'   关闭或失败时作为日级兜底运行；记录级纠正成功时是否再跑 LMM 由
-#'   `use_lmm_stacking` 决定，该组合下兜底开关为空操作。
+#'   开关依赖（issue #5 重写后）：`use_lmm_feed_correction=TRUE`（默认）时日级文献
+#'   LMM **恒运行**，`daily_feed_g` 由它产生；记录级物理纠正的产物不再进入日值，
+#'   只作内部对照。设 FALSE 则不跑 LMM，`daily_feed_g` 退回记录级纠正的产物。
 #' @return A daily-level table aggregated by animal and date with daily_weight_g and enhanced feed QC
 #' @export
 ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
@@ -110,7 +110,8 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
     dt[, weight_filtered := NA_real_]
   }
   
-  # 解析校正机制开关：config=NULL 直调时保持现状行为（记录级纠正 + LMM 兜底均开启）
+  # 解析校正机制开关（issue #5 重写后语义）：use_lmm_fix 决定 daily_feed_g 的来源——
+  # TRUE 时日级文献 LMM 恒运行；FALSE 时退回记录级物理纠正（A）的产物。
   ns_cfg <- if (!is.null(config)) config$national_standard else NULL
   use_record_fix <- if (!is.null(ns_cfg$use_record_feed_correction)) {
     isTRUE(ns_cfg$use_record_feed_correction)
@@ -118,18 +119,16 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
   use_lmm_fix <- if (!is.null(ns_cfg$use_lmm_feed_correction)) {
     isTRUE(ns_cfg$use_lmm_feed_correction)
   } else TRUE
-  use_lmm_stack <- if (!is.null(ns_cfg$use_lmm_stacking)) {
-    isTRUE(ns_cfg$use_lmm_stacking)
-  } else FALSE
 
   # 被 flag 记录 = 事件真实发生但采食量错误，按 flag 类型用物理规则纠正（而非置零）。
-  # 纠正失败或被配置关闭时回退为现有「置零 + 日级 LMM 校正」路径。
-  feed_correction_success <- FALSE
+  # 纠正失败或被配置关闭时退回「置零」。
+  # issue #5 重写：本函数的产物 feed_filtered 自本版起**不再进入 daily_feed_g**
+  # （日值由日级文献 LMM 产生），只在内部保留作 A 臂对照；也正因如此，这里
+  # 的成败不再需要向外传递。
   if (!is.null(feed_col) && use_record_fix) {
     corrected <- .correct_feed_records(
       dt, speed_max = if (!is.null(ns_cfg$speed_max)) as.numeric(ns_cfg$speed_max) else 170)
-    feed_correction_success <- corrected$success
-    if (feed_correction_success) {
+    if (corrected$success) {
       dt[, feed_filtered := corrected$feed_corrected]
     } else {
       dt[, feed_filtered := ifelse(is_outlier_feed == TRUE, 0, get(feed_col))]
@@ -236,15 +235,15 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
     }
   }
 
-  run_lmm_fallback <- !feed_correction_success && use_lmm_fix
-  run_lmm_stack <- feed_correction_success && use_lmm_fix && use_lmm_stack
-  if (run_lmm_fallback || run_lmm_stack) {
-    # 记录级纠正失败/关闭 → 日级 LMM 兜底（fallback）；
-    # 纠正成功且开启叠加 → 在物理纠正结果上串联互补式 LMM（stack，
-    # 只补噪声置零类损失，不对已被物理封顶的记录二次补偿）
-    result <- .apply_feed_lmm_correction(result, dt, ns_cfg, stack = run_lmm_stack)
+  # issue #5 重写：门控与记录级纠正的成败解耦。此前日级 LMM 只在记录级纠正
+  # 「关闭或失败」时兜底运行，而记录级纠正成功恰是默认情况——不解耦的话，
+  # 文献化的 LMM 在出厂配置下永远不跑。现在 use_lmm_fix 单独决定
+  # daily_feed_g 的来源，记录级纠正的产物退居内部对照列。
+  if (use_lmm_fix) {
+    result <- .apply_feed_lmm_correction(result, dt, ns_cfg)
   } else {
-    # 跳过日级 LMM 校正，仅保留日采食量上限校验（保证各路径口径一致）
+    # 关闭日级校正：daily_feed_g 保持记录级物理纠正（A）的产物，
+    # 仅保留日采食量上限校验（保证各路径口径一致）
     result <- .finalize_daily_feed(result, .feed_daily_max_g(ns_cfg))
   }
   # =================================================
@@ -264,18 +263,24 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
 #' 日级采食量出口校验（issue #21）
 #'
 #' 6kg (6000g) 为猪只单日采食量生理上限：超限天打标
-#' `flag_daily_feed_over_limit` 并置 NA（等插补）；≤0 的天同样置 NA。三条出口
-#' 路径（跳过 LMM / LMM 出口 / 无 feed 列提前返回）统一调用，避免口径漂移。
-#' 只做出口把关，不筛 LMM 训练样本。
+#' `flag_daily_feed_over_limit` 并置 NA（等插补）；≤0 的天打标
+#' `flag_daily_feed_nonpositive` 后同样置 NA。三条出口路径（跳过 LMM / LMM 出口
+#' / 无 feed 列提前返回）统一调用，避免口径漂移。只做出口把关，不筛 LMM 训练样本
+#' ——注意这与 LMM 的协变量截尾是两件事：前者管**响应**的生理上限，后者管
+#' **逐错误类型的累计协变量**的极端值。
 #'
 #' @param dt 日级表（含 daily_feed_g）
 #' @param feed_max_g 日级采食量上限（g）。默认 6000（=config 默认
 #'   `feed_intake_range = c(0, 6)` kg 的上界），由 `.feed_daily_max_g()` 从
 #'   config 接线（issue #40）——此前该值硬编码，配置项改了也不生效。
-#' @return 原地修改并返回 dt
+#' @return 原地修改并返回 dt，新增 `flag_daily_feed_over_limit` /
+#'   `flag_daily_feed_nonpositive` 两列
 #' @keywords internal
 .finalize_daily_feed <- function(dt, feed_max_g = 6000) {
   dt[, flag_daily_feed_over_limit := !is.na(daily_feed_g) & daily_feed_g > feed_max_g]
+  # 文献口径下校正量为负（或大到把日值压穿）时不再有 pmax(0,·) 兜底，单独打标
+  # 使这条路径可审计，而不是静默变 NA
+  dt[, flag_daily_feed_nonpositive := !is.na(daily_feed_g) & daily_feed_g <= 0]
   dt[!is.na(daily_feed_g) & (daily_feed_g <= 0 | flag_daily_feed_over_limit == TRUE),
      daily_feed_g := NA_real_]
   dt[]
@@ -438,62 +443,153 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
   dt
 }
 
-#' LMM Feed Intake Correction Engine
+#' 逐错误类型的 LMM 协变量指派表（Jiao et al. 2014 的 16 类错误）
 #'
-#' 日级兜底校正：仅在记录级物理纠正失败或被配置关闭时触发。
-#' Phase 1 重构（issue #5，V1.1.2）修复四个统计缺陷：
-#' 1. 协变量加入 visits_n——异常条数与当日活动强度机械相关，不控制强度时
-#'    flag 系数会把「当天访问多」的效应误吸收进补偿量；
-#' 2. 被 flag 记录改用「时长量纲特征」入模：补偿量与被丢采食时长成比例
-#'    （近似与丢失的真实克数成比例），而非与异常次数成比例；
-#'    无时长列或日级 flag（STL）自动退回计数特征；
-#' 3. 训练集不再按 0 < normal_feed_sum ≤ 6000 截断——截断系统性丢弃大采食天，
-#'    让系数低估真实损失；生理上限只在出口做校验（打标 + 置 NA），不筛训练样本；
-#' 4. 补偿加回量受物理速率约束：add-back ≤ speed_max × 被flag记录总时长 / 60
-#'    （把记录级物理规则的先验吸收进 LMM）。
-#' 另新增台账列 lmm_correction_g（每日净校正值），全程可追溯。
+#' 文献把协变量**预先**指派给错误类型（不是数据驱动挑选）：
+#'   - `ETP_p` 给全部 16 类；
+#'   - `OTD_p` 给类型 1,2 与 6–14（共 11 类）；
+#'   - `FID_p` 给类型 4,5 与 15,16（共 4 类）。
+#' 校验式 16 + 11 + 4 = 31，对应正文 "31 variables created from the 16 error
+#' counts"。Jiao et al. (2016) 用 8 类时列的是 FID 给类型 4,5、OTD 给类型
+#' 1,2,7,8——均为本文区间的子集，两篇互证。
 #'
-#' stack 模式（`use_lmm_stacking=TRUE`——V1.1.4 起为默认——且记录级纠正成功时）：在物理纠正后的
-#' 日值上做**互补式**校正——只建模「噪声置零类」flag（负值/极高速小采食/
-#' 长时间零速被物理规则置 0 的记录）的时长特征；已被物理封顶恢复的
-#' speed_too_fast / feed_too_high 不再入模，避免二次补偿。响应为纠正后的
-#' 日值本身，校正面为加法（daily_feed_g += correction）；NA 天不复活，
-#' 留给插补。
+#' 我们的 QC 只覆盖其中一部分错误类型，对应关系见 `flag` 列；`NA` 表示该类型
+#' 我们未采集：LWD/FWD（类型 11–14）需要每次访问**分别**记录入场与离场体重，
+#' 而标准格式每次访问只有一个 `Weight` 列（数据格式限制，非实现取舍）；
+#' FRV-high-strict（类型 7）需要「看下一条访问」的配对条件，未实现。
 #'
-#' @param daily_dt Daily-level data.table (aggregated output of Step 5)
-#' @param raw_dt Standard-record-level data.table with QC flags
-#' @param ns_cfg Optional national_standard config list (read for `speed_max`)
-#' @param stack Logical; TRUE = 互补叠加模式（见上），FALSE = 兜底模式
-#' @return Daily-level data.table with corrected daily_feed_g and ledger column
-#'   lmm_correction_g
+#' `flag_STL_FI` 是我们自有的 STL 日级标记，文献 16 类里**没有**对应类型，
+#' 按裁定以 ETP-only 形式保留为扩展项。
+#'
+#' @return data.table，每行一个入模项，列为
+#'   `err_type`（文献类型号，扩展项为 NA）、`label`、`flag`、`kind`
+#'   （etp/otd/fid）、`term`（= `paste0(kind, "_", flag)`，即模型项名）。
+#'   当前共 18 项：ETP 10 + OTD 6 + FID 2。
 #' @keywords internal
-.apply_feed_lmm_correction <- function(daily_dt, raw_dt, ns_cfg = NULL, stack = FALSE) {
-  dt <- data.table::copy(daily_dt)
-  # issue #38：原实现在此 copy(整表) 的唯一目的是给 raw_dt 按引用加一列
-  # is_feed_normal_record（issue #30 为防止改写调用方表的防御性副本）。改为在
-  # 局部向量上算「正常记录」掩码，raw_dt 全程只读——既保留 issue #30 的不改写
-  # 契约，也不再产生一份 32 列 × 179 万行的整表副本。
+.lmm_covariate_spec <- function() {
+  types <- data.table::data.table(
+    err_type = 1:16,
+    label = c("FIV-low", "FIV-high", "FIV-0", "OTV-low", "OTV-high",
+              "FRV-high-FIV-low", "FRV-high-strict", "FRV-high", "FRV-0",
+              "FRV-low", "LWD-low", "LWD-high", "FWD-low", "FWD-high",
+              "LTD-low", "FTD-high"),
+    flag = c("flag_feed_negative", "flag_feed_too_high",
+             "flag_duration_zero_with_feed", "flag_duration_negative",
+             "flag_duration_too_long", "flag_speed_extreme_low_feed",
+             NA_character_, "flag_speed_too_fast",
+             "flag_speed_zero_long_duration", "flag_speed_too_slow",
+             NA_character_, NA_character_, NA_character_, NA_character_,
+             NA_character_, NA_character_)
+  )
 
-  # 10 error flags for single record anomalies (including STL time series flag)
-  err_flags <- c("flag_duration_negative", "flag_duration_too_long",
-                 "flag_duration_zero_with_feed", "flag_speed_too_slow",
-                 "flag_speed_too_fast", "flag_speed_extreme_low_feed",
-                 "flag_speed_zero_long_duration", "flag_feed_negative",
-                 "flag_feed_too_high", "flag_STL_FI")
+  # 文献的指派区间（见函数说明与校验式 16+11+4=31）
+  otp_types <- c(1:2, 6:14)
+  fid_types <- c(4:5, 15:16)
 
-  # 噪声置零类：物理规则会把这类记录置 0（真实克数完全丢失）——
-  # stack 模式下唯一允许 LMM 补偿的损失类别
-  noise_flags <- c("flag_feed_negative", "flag_speed_extreme_low_feed",
-                   "flag_speed_zero_long_duration")
-  
-  # ==== 1. Extract feed intake of normal records and anomaly occurrence flags ====
-  # Mark "normal" records (i.e., all 10 error flags are FALSE AND not an outlier)。
-  # 口径与原实现逐字一致：flag 列缺失视为「未标记」，NA 视为「未被判异常」而计入
-  # 正常（原实现只把 == TRUE 的位置置 FALSE，NA 因此保持 TRUE）。
+  spec <- data.table::data.table(
+    err_type = rep(types$err_type, 3L),
+    kind     = rep(c("etp", "otd", "fid"), each = nrow(types))
+  )
+  spec <- spec[
+    (kind == "etp") |
+      (kind == "otd" & err_type %in% otp_types) |
+      (kind == "fid" & err_type %in% fid_types)
+  ]
+  spec <- merge(spec, types, by = "err_type", all.x = TRUE, sort = FALSE)
+  # 我们未采集的类型（flag 为 NA）不进模型
+  spec <- spec[!is.na(flag)]
+  spec[, term := paste0(kind, "_", flag)]
+
+  # 超出文献的扩展项：STL 日级标记，ETP-only
+  spec <- data.table::rbindlist(list(
+    spec[, .(err_type, label, flag, kind, term)],
+    data.table::data.table(
+      err_type = NA_integer_, label = "STL (extension)",
+      flag = "flag_STL_FI", kind = "etp", term = "etp_flag_STL_FI"
+    )
+  ))
+  data.table::setorder(spec, err_type, kind, na.last = TRUE)
+  spec[]
+}
+
+#' 个体全期平均日增重（g/天），猪内常数
+#'
+#' 文献的 `ADG_m` 下标只有 m（猪）、是**全期常数**，与逐日体重差分不是同一个
+#' 变量（issue #5 重写前误用了后者）。此处以个体「日体重 ~ 日序」的最小二乘
+#' 斜率估计，比「首末两点差 / 天数」稳健——后者完全由两端的称重噪声决定。
+#'
+#' 有效体重天 < 2 或日期跨度为 0 时返回 NA：该头退出 LMM 训练集，但校正在应用
+#' 端照常作用于它（校正量不依赖 ADG）。
+#'
+#' @param dt 日级表，需含 `animal_id` / `record_date` / `daily_weight_g`
+#' @return 与 `nrow(dt)` 等长的数值向量（g/天）
+#' @keywords internal
+.lmm_adg_per_animal <- function(dt) {
+  res <- rep(NA_real_, nrow(dt))
+  if (nrow(dt) == 0L) return(res)
+
+  tmp <- data.table::data.table(
+    .id = dt[["animal_id"]],
+    .d  = dt[["record_date"]],
+    .w  = dt[["daily_weight_g"]]
+  )
+
+  slopes <- tmp[!is.na(.w), {
+    if (.N < 2L) {
+      NA_real_
+    } else {
+      x <- as.numeric(.d - min(.d))
+      xc <- x - mean(x)
+      den <- sum(xc * xc)
+      # den == 0 即全部体重落在同一天（跨度为 0），斜率无定义
+      if (den <= 0) NA_real_ else sum(xc * (.w - mean(.w))) / den
+    }
+  }, by = .id]
+
+  if (nrow(slopes) == 0L) return(res)
+
+  # 同一头的 ADG 是常数，按**动物**回填到该头的每一行——包括体重缺失的行
+  # （斜率只用有体重的天估计，但那头动物的 ADG 对它同样成立）
+  res[] <- slopes[[2L]][match(tmp$.id, slopes[[1L]])]
+  res
+}
+
+#' 构建日级 LMM 协变量（文献的 ETP / OTD / FID 与响应）
+#'
+#' 把记录级表聚合成 `.apply_feed_lmm_correction()` 直接可用的日级宽表。抽出成
+#' 独立 internal 函数有两个好处：协变量口径可以脱离 `lme4` 单测；文献的
+#' 「response = error-free DFI」「ETP 是占比」「OTD/FID 是逐类型累计量」三条
+#' 语义各自有了唯一的定义处。
+#'
+#' 列含义：
+#'   - `ef_dfi_g`   error-free 日和 = 干净记录的采食量之和（**响应** Y）
+#'   - `ef_n_visit` 当日干净访问数；为 0 时 Y 无定义（该行退出训练集）
+#'   - `n_/dur_/feed_<flag>` 逐 flag 的命中次数 / 累计占据秒数 / 累计采食克数
+#'   - `etp_<flag>` = `n_<flag> / 当日全部访问数`
+#'   - `otd_<flag>` = `dur_<flag>`（秒）；`fid_<flag>` = `feed_<flag>`（克）
+#'
+#' 细节口径：
+#'   - 「干净记录」= 10 个 error flag 全 FALSE、非 feed 离群，且**排除**
+#'     `flag_feed_out_of_range`（语义是设备故障、整天不可用，不该计进 Y）。
+#'   - `feed_<flag>` 用**原始** `feed_g`：文献的 FID 就是出错访问的记录值之和，
+#'     不做任何纠正。
+#'   - `flag_STL_FI` 是日级标记（打在当天全部记录上），没有单条记录时长，
+#'     故 `dur_` 取 0；它只作 ETP 项入模。
+#'   - 缺失的 flag 列视为该类从未命中，三个派生量恒 0。
+#'
+#' @param raw_dt 记录级标准表（含 `animal_id` / `record_date` / `feed_g`）
+#' @param spec `.lmm_covariate_spec()` 的输出
+#' @return 日级 data.table，按 `animal_id` + `record_date` 唯一
+#' @keywords internal
+.lmm_daily_covariates <- function(raw_dt, spec = .lmm_covariate_spec()) {
+  err_flags <- sort(unique(spec$flag))
+
   normal_rec <- rep(TRUE, nrow(raw_dt))
-  # Exclude records already flagged as feed outliers by QC
   if ("is_outlier_feed" %in% names(raw_dt)) {
     normal_rec <- normal_rec & !(raw_dt[["is_outlier_feed"]] %in% TRUE)
+  }
+  if ("flag_feed_out_of_range" %in% names(raw_dt)) {
+    normal_rec <- normal_rec & !(raw_dt[["flag_feed_out_of_range"]] %in% TRUE)
   }
   for (flg in err_flags) {
     if (flg %in% names(raw_dt)) {
@@ -501,234 +597,301 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
     }
   }
 
-  # Aggregate daily occurrence of the 10 anomalies and sum of normal feed intake
-  feed_col <- if ("feed_g" %in% names(raw_dt)) "feed_g" else if ("Feed_intake" %in% names(raw_dt)) "Feed_intake" else NULL
+  feed_col <- if ("feed_g" %in% names(raw_dt)) "feed_g"
+              else if ("Feed_intake" %in% names(raw_dt)) "Feed_intake" else NULL
+  if (is.null(feed_col)) stop("no feed column in raw_dt", call. = FALSE)
+  # 有 duration 列时才算 OTD；flag_STL_FI 是日级标记，见函数说明
+  dur_col <- if ("duration_sec" %in% names(raw_dt)) "duration_sec"
+             else if ("Duration" %in% names(raw_dt)) "Duration" else NULL
 
-  if (is.null(feed_col)) {
-    # 无 feed 列时跳过记录级纠正与 LMM，但出口校验仍要走（issue #21：原先直接
-    # return 使此路径缺少 flag_daily_feed_over_limit 列，与另两条出口口径不一致）
-    return(.finalize_daily_feed(dt, .feed_daily_max_g(ns_cfg)))
-  }
-
-  # We do not exclude flag_feed_out_of_range, retaining this rule
-  # issue #23：原用 .SD[[feed_col]] 会按组物化全部列再取一列；现用只含 4 列的
-  # 临时表（三列与原表共享底层向量，仅掩码是新分配的）取分组和。
-  # by 仍覆盖全部 (animal_id, record_date) 组，故「当天无正常记录」的组仍得 0
-  # （原实现 sum(numeric(0), na.rm = TRUE) 亦为 0）；若改成先按掩码滤行再分组，
-  # 这些组会整体消失、merge 后变 NA，口径就不一致了。
-  slim <- data.table::setDT(list(
+  feats <- data.table::setDT(list(
     animal_id   = raw_dt[["animal_id"]],
     record_date = raw_dt[["record_date"]],
     .feed       = raw_dt[[feed_col]],
     .normal     = normal_rec
-  ))
-  daily_features <- slim[, .(
-    normal_feed_sum = sum(.feed[.normal], na.rm = TRUE)
+  ))[, .(
+    ef_dfi_g     = sum(.feed[.normal], na.rm = TRUE),
+    ef_n_visit   = sum(.normal),
+    visits_total = .N
   ), by = .(animal_id, record_date)]
-
-  dt <- merge(dt, daily_features, by = c("animal_id", "record_date"), all.x = TRUE)
-
-  # 每 flag 类型构建两个日级特征：
-  #   has_<flag> : 异常发生次数（计数口径）
-  #   dur_<flag> : 该类型被 flag 记录的累计有效时长（秒，量纲口径，优先使用）
-  # 时长保留了单次采食事件的规模信息：同样是 speed_too_fast，丢掉 60s 的真实
-  # 采食和丢掉 5s 的不应获得同样的补偿。flag_STL_FI 是日级标记，只用计数。
-  dur_col <- if ("duration_sec" %in% names(raw_dt)) "duration_sec"
-             else if ("Duration" %in% names(raw_dt)) "Duration" else NULL
 
   for (flg in err_flags) {
     if (flg %in% names(raw_dt)) {
       if (!is.null(dur_col) && flg != "flag_STL_FI") {
-        flg_agg <- raw_dt[get(flg) %in% TRUE, .(
-          flg_n = .N,
-          flg_dur = sum(pmax(as.numeric(get(dur_col)), 0), na.rm = TRUE)
+        agg <- raw_dt[get(flg) %in% TRUE, .(
+          n    = .N,
+          # 占据时长为负正是判错依据本身、不是可用的量：取 0 是定义域处理，
+          # 不是被本次重写移除的那类「校正护栏」
+          dur  = sum(pmax(as.numeric(get(dur_col)), 0), na.rm = TRUE),
+          feed = sum(get(feed_col), na.rm = TRUE)
         ), by = .(animal_id, record_date)]
       } else {
-        flg_agg <- raw_dt[get(flg) %in% TRUE, .(
-          flg_n = .N,
-          flg_dur = 0
+        agg <- raw_dt[get(flg) %in% TRUE, .(
+          n = .N, dur = 0, feed = sum(get(feed_col), na.rm = TRUE)
         ), by = .(animal_id, record_date)]
       }
-      data.table::setnames(flg_agg, c("flg_n", "flg_dur"),
-                           c(paste0("has_", flg), paste0("dur_", flg)))
-      dt <- merge(dt, flg_agg, by = c("animal_id", "record_date"), all.x = TRUE)
-      cnt_name <- paste0("has_", flg)
-      dur_name <- paste0("dur_", flg)
-      dt[is.na(get(cnt_name)), (cnt_name) := 0L]
-      dt[is.na(get(dur_name)), (dur_name) := 0]
+      data.table::setnames(
+        agg, c("n", "dur", "feed"),
+        c(paste0("n_", flg), paste0("dur_", flg), paste0("feed_", flg))
+      )
+      feats <- merge(feats, agg, by = c("animal_id", "record_date"), all.x = TRUE)
+      for (nm in c(paste0("n_", flg), paste0("dur_", flg), paste0("feed_", flg))) {
+        feats[is.na(get(nm)), (nm) := 0]
+      }
     } else {
-      # Default to 0 if a flag is missing in the input
-      dt[, paste0("has_", flg) := 0L]
-      dt[, paste0("dur_", flg) := 0]
+      for (nm in c(paste0("n_", flg), paste0("dur_", flg), paste0("feed_", flg))) {
+        feats[, (nm) := 0]
+      }
     }
   }
 
-  # 被 flag 记录的当日总时长（任意 flag 口径、不重复计多 flag 记录）：
-  # 用作补偿加回量的物理速率封顶基数
-  if (!is.null(dur_col) && "is_outlier_feed" %in% names(raw_dt)) {
-    dur_tot <- raw_dt[is_outlier_feed %in% TRUE, .(
-      flagged_dur_total = sum(pmax(as.numeric(get(dur_col)), 0), na.rm = TRUE)
-    ), by = .(animal_id, record_date)]
-    dt <- merge(dt, dur_tot, by = c("animal_id", "record_date"), all.x = TRUE)
-    dt[is.na(flagged_dur_total), flagged_dur_total := 0]
-  } else {
-    dt[, flagged_dur_total := 0]
+  # 派生入模项。ETP 的分母是**当日全部访问数**（文献 "percentage of visits with
+  # error type p"）；分子为 0 时占比恒 0，故分母为 0 也取 0，不产生 NaN。
+  denom <- feats[["visits_total"]]
+  for (flg in spec[kind == "etp", flag]) {
+    n_hit <- feats[[paste0("n_", flg)]]
+    feats[, (paste0("etp_", flg)) := data.table::fifelse(denom > 0, n_hit / denom, 0)]
+  }
+  for (flg in spec[kind == "otd", flag]) {
+    feats[, (paste0("otd_", flg)) := feats[[paste0("dur_", flg)]]]
+  }
+  for (flg in spec[kind == "fid", flag]) {
+    feats[, (paste0("fid_", flg)) := feats[[paste0("feed_", flg)]]]
   }
 
-  # stack 模式的速率封顶基数：仅噪声置零类的总时长（互补口径——只有这类
-  # 损失允许 LMM 补偿，封顶也只对这部分时长生效）
-  if (stack && !is.null(dur_col)) {
-    has_noise_any <- Reduce(`|`, lapply(noise_flags, function(f) {
-      if (f %in% names(raw_dt)) raw_dt[[f]] %in% TRUE else rep(FALSE, nrow(raw_dt))
-    }))
-    if (any(has_noise_any)) {
-      noise_tot <- raw_dt[has_noise_any, .(
-        noise_dur_total = sum(pmax(as.numeric(get(dur_col)), 0), na.rm = TRUE)
-      ), by = .(animal_id, record_date)]
-      dt <- merge(dt, noise_tot, by = c("animal_id", "record_date"), all.x = TRUE)
-      dt[is.na(noise_dur_total), noise_dur_total := 0]
-    } else {
-      dt[, noise_dur_total := 0]
-    }
-  } else {
-    dt[, noise_dur_total := 0]
-  }
+  feats[, visits_total := NULL]
+  feats[]
+}
 
-  # ==== 2. Construct individual daily weight gain (Covariate) ====
-  data.table::setorder(dt, animal_id, record_date)
-  # 个体日增重 = 相邻两天体重差 / 相邻两天天数差（g/天）
-  dt[, adg_g := c(NA, diff(daily_weight_g) / as.numeric(diff(record_date))), by = animal_id]
-  # 首日无前值，补 0 避免干扰训练
-  dt[is.na(adg_g), adg_g := 0]
+#' LMM Feed Intake Correction Engine（Jiao et al. 2014 文献实现）
+#'
+#' 日级采食量校正的**唯一引擎**（issue #5 重写）。逐字复现 Jiao et al. (2014,
+#' *J Anim Sci* 92:2377–2386) 的线性混合模型：
+#'
+#'   Y = B_i + b1·BW + b2·ADG + Σ_p(b3p·ETP_p + b4p·OTD_p + b5p·FID_p) + P_m + e
+#'
+#'   - `Y`    = error-free daily feed intake（干净访问的当日采食量和，`ef_dfi_g`）
+#'   - `B_i`  = 批次固定效应 ↔ `location`
+#'   - `BW`   = 当日体重；`ADG` = **个体全期常数**（`.lmm_adg_per_animal()`）
+#'   - `ETP_p` = 类型 p 的访问**占比**（分母为当日全部访问数）
+#'   - `OTD_p` = 类型 p 访问的当日**累计占据时长**（秒）
+#'   - `FID_p` = 类型 p 访问的当日**累计采食量**（克，用原始记录值）
+#'   - `P_m`  = 个体随机截距 `(1 | animal_id)`
+#'
+#' 协变量按文献预先指派、不做数据驱动挑选，逐类型的对应关系与文献区间校验见
+#' `.lmm_covariate_spec()`。我们的 QC 未采集类型 7、11–14，故实际入模 18 项。
+#'
+#' 应用同文献：`Correction = Σ(α·ETP + γ·OTD + δ·FID)`、
+#' `daily_feed_g = ef_dfi_g + Correction`——**字面 +β̂x**。不做单侧截断、
+#' 不加物理速率封顶、不按系数符号跳过（文献 Table 1 的系数有正有负，
+#' 例如 FIV-high +61.40、OTV-high +1750.0）。
+#'
+#' 协变量截尾（Casey 2003，经 Jiao et al. 2016 转述）：拟合前剔除
+#' `fid_*` / `otd_*` 越界的**训练行**，界见 config 的 `lmm_trim_dfie_g` /
+#' `lmm_trim_otde_s`。注意被截的是逐错误类型的**累计协变量**（文献记作
+#' DFIe/OTDe，e = error），**不是**当日总采食量、**也不是**响应——响应的生理
+#' 上限由出口 `.finalize_daily_feed()` 的 `feed_intake_range` 单独把关。
+#' 截尾只作用于训练集；应用端回填永不截尾。
+#'
+#' 其余口径：
+#'   - 训练响应与全部协变量都用**原始**记录，与记录级物理纠正（A）无关；
+#'     A 的产物不进日值（见 `ZhenM_standard_to_daily_filtered()` 的门控注释）。
+#'   - 拟合失败或样本不足时**什么都不改** `daily_feed_g`（保留上游结果），
+#'     绝不回退到 error-free 日和——它系统性丢掉被 flag 记录的采食量，
+#'     正是本方法要消除的偏差。
+#'   - 台账列 `lmm_ef_g`（error-free 日和）与 `lmm_correction_g`（当日校正量）
+#'     保留在输出中，恒满足 `daily_feed_g == lmm_ef_g + lmm_correction_g`。
+#'
+#' @param daily_dt Daily-level data.table (aggregated output of Step 5)
+#' @param raw_dt Standard-record-level data.table with QC flags
+#' @param ns_cfg Optional national_standard config list (read for the two
+#'   covariate truncation bounds)
+#' @return Daily-level data.table with corrected `daily_feed_g` and ledger
+#'   columns `lmm_ef_g` / `lmm_correction_g`
+#' @keywords internal
+.apply_feed_lmm_correction <- function(daily_dt, raw_dt, ns_cfg = NULL) {
+  dt <- data.table::copy(daily_dt)
+  # issue #38：原实现在此 copy(整表) 的唯一目的是给 raw_dt 按引用加一列
+  # is_feed_normal_record（issue #30 为防止改写调用方表的防御性副本）。改为在
+  # 局部向量上算「正常记录」掩码，raw_dt 全程只读——既保留 issue #30 的不改写
+  # 契约，也不再产生一份 32 列 × 179 万行的整表副本。
+
+  # 逐错误类型的协变量指派（文献预先指定，见 .lmm_covariate_spec()）
+  spec      <- .lmm_covariate_spec()
+  err_flags <- sort(unique(spec$flag))
+  etp_flags <- spec[kind == "etp", flag]
+  otd_flags <- spec[kind == "otd", flag]
+  fid_flags <- spec[kind == "fid", flag]
   
-  # ==== 3. LMM Preparation and Modeling ====
-  # 响应变量：fallback = 干净记录和 normal_feed_sum（覆写口径）；
-  #          stack = 记录级物理纠正后的日值本身（加法口径）
-  response_col <- if (stack) "daily_feed_g" else "normal_feed_sum"
-  if (requireNamespace("lme4", quietly = TRUE)) {
-    # Only days with valid covariates are modeled as the dependent variable。
-    # 注意：训练集不再按 0 < sum ≤ 6000 截断（Phase 1 修复）——截断会系统性
-    # 丢弃大采食天、低估损失系数；生理上限只在出口校验（见第 4 步）
-    train_idx <- !is.na(dt[[response_col]]) & !is.na(dt$daily_weight_g) & !is.na(dt$adg_g)
+  # ==== 1. 干净记录掩码与日级协变量聚合 ====
+  # 无 feed 列时跳过 LMM，但出口校验仍要走（issue #21：原先直接 return 使此路径
+  # 缺少 flag_daily_feed_over_limit 列，与另两条出口口径不一致）；台账列一并补齐，
+  # 使输出 schema 不随输入漂移
+  feed_col <- if ("feed_g" %in% names(raw_dt)) "feed_g"
+              else if ("Feed_intake" %in% names(raw_dt)) "Feed_intake" else NULL
 
-    # Include Location as a fixed effect only if it exists and has > 1 unique value
-    has_loc <- "location" %in% names(dt) && length(unique(stats::na.omit(dt$location))) > 1
+  if (is.null(feed_col)) {
+    dt[, lmm_ef_g := NA_real_]
+    dt[, lmm_correction_g := NA_real_]
+    return(.finalize_daily_feed(dt, .feed_daily_max_g(ns_cfg)))
+  }
+
+  # 响应与全部协变量的构建口径集中在 .lmm_daily_covariates()（可脱离 lme4 单测）
+  daily_features <- .lmm_daily_covariates(raw_dt, spec)
+  dt <- merge(dt, daily_features, by = c("animal_id", "record_date"), all.x = TRUE)
+
+  term_cols <- spec$term
+  for (nm in term_cols) {
+    # 孤儿行（daily_dt 里有、raw_dt 里没有的 animal-day）不参与训练，
+    # 但协变量列不能留 NA 污染模型矩阵
+    dt[is.na(get(nm)), (nm) := 0]
+  }
+
+  # ==== 2. 个体全期平均日增重（文献 ADG_m，猪内常数） ====
+  # issue #5 重写：原用「相邻两天体重差 / 天数差」的**逐日**日增重，那是另一个
+  # 变量（文献的 ADG_m 下标只有 m，全期恒定）；「首日补 0」也随之删除。
+  data.table::setorder(dt, animal_id, record_date)
+  adg_const <- .lmm_adg_per_animal(dt)
+  dt[, adg_const_g := adg_const]
+  
+  # ==== 3. LMM 训练集与拟合 ====
+  if (requireNamespace("lme4", quietly = TRUE)) {
+    trim_dfie <- if (!is.null(ns_cfg$lmm_trim_dfie_g)) as.numeric(ns_cfg$lmm_trim_dfie_g) else c(0, 3500)
+    trim_otde <- if (!is.null(ns_cfg$lmm_trim_otde_s)) as.numeric(ns_cfg$lmm_trim_otde_s) else c(0, 5000)
+
+    # 协变量截尾（Casey 2003）：只在**训练集**上按逐错误类型的累计协变量剔除极端
+    # 行。被截的是 fid_* / otd_* 这两个**协变量**——不是响应、也不是日总采食量
+    # （文献记作 DFIe/OTDe，e = error，不是 error-free）；响应的生理上限由出口
+    # .finalize_daily_feed() 单独把关。应用端回填永不截尾，否则恰好会取消掉最需
+    # 要校正的天。
+    trim_ok <- rep(TRUE, nrow(dt))
+    for (nm in c(paste0("fid_", fid_flags), paste0("otd_", otd_flags))) {
+      vals <- dt[[nm]]
+      lim  <- if (startsWith(nm, "fid_")) trim_dfie else trim_otde
+      trim_ok <- trim_ok & (is.na(vals) | (vals >= lim[1L] & vals <= lim[2L]))
+    }
+
+    # 训练行：Y 有定义（当天至少一条干净访问）、体重与 ADG 可得、协变量未越界
+    train_idx <- !is.na(dt$ef_dfi_g) & !is.na(dt$daily_weight_g) &
+      !is.na(dt$adg_const_g) & !is.na(dt$ef_n_visit) & dt$ef_n_visit >= 1 & trim_ok
+
+    has_loc   <- "location" %in% names(dt) && length(unique(stats::na.omit(dt$location))) > 1
     has_breed <- "breed" %in% names(dt) && length(unique(stats::na.omit(dt$breed))) > 1
 
-    if (sum(train_idx) > 30) {
-      # Rescale large covariates (grams to kg) to avoid lme4 optimizer warning: "Some predictor variables are on very different scales"
-      formula_str <- paste(response_col, "~ I(daily_weight_g / 1000) + I(adg_g / 1000)")
-
-      # 解混杂关键项：异常条数与当日活动强度机械相关（访问越多的天越容易出现异常
-      # 记录），不控制 visits_n 时 flag 系数会把「当天采食活动多」误吸收进补偿量
-      if ("visits_n" %in% names(dt)) formula_str <- paste(formula_str, "+ visits_n")
-      if (has_loc) formula_str <- paste(formula_str, "+ location")
-      if (has_breed) formula_str <- paste(formula_str, "+ breed")
-
-      # 每个 flag 选一个入模特征：优先时长量纲；该特征在训练集中无变异时退回计数。
-      # stack 模式只入模噪声置零类——其余类型已被物理规则恢复，二次补偿会重复计数
-      active_feats <- character()
-      for (flg in err_flags) {
-        if (stack && !flg %in% noise_flags) next
-        picked <- NULL
-        for (cand in c(paste0("dur_", flg), paste0("has_", flg))) {
-          vals <- dt[[cand]][train_idx]
-          if (length(unique(vals[!is.na(vals)])) > 1) {
-            picked <- cand
-            break
-          }
-        }
-        if (!is.null(picked)) {
-          active_feats <- c(active_feats, picked)
-          formula_str <- paste(formula_str, "+", picked)
-        }
+    # 逐项剔除训练集内零变异的协变量：lme4 对常量列会秩亏或给 NA 系数，属工程护
+    # 栏而非方法偏离——但被剔的项必须报出来，静默改变模型规格是最危险的失效。
+    active_terms  <- character()
+    dropped_terms <- character()
+    for (tm in spec$term) {
+      vals <- dt[[tm]][train_idx]
+      if (length(unique(vals[!is.na(vals)])) > 1L) {
+        active_terms <- c(active_terms, tm)
+      } else {
+        dropped_terms <- c(dropped_terms, tm)
       }
+    }
 
-      formula_str <- paste0(formula_str, " + (1 | animal_id)")
+    # 门槛随入模项数放大：文献式模型有 18 个固定效应 + 随机截距，30 行 / 2 头动物
+    # 在数值上无意义（旧阈值是硬编码的 sum(train_idx) > 30）
+    n_animal_train <- data.table::uniqueN(dt$animal_id[train_idx])
+    min_train <- max(30L, 10L * length(active_terms))
 
+    # Rescale large covariates (grams to kg) to avoid lme4 optimizer warning:
+    # "Some predictor variables are on very different scales"
+    formula_str <- "ef_dfi_g ~ I(daily_weight_g / 1000) + I(adg_const_g / 1000)"
+    if (has_loc)   formula_str <- paste(formula_str, "+ location")
+    if (has_breed) formula_str <- paste(formula_str, "+ breed")
+    if (length(active_terms) > 0L) {
+      formula_str <- paste(formula_str, "+", paste(active_terms, collapse = " + "))
+    }
+    formula_str <- paste0(formula_str, " + (1 | animal_id)")
+
+    if (sum(train_idx) >= min_train && n_animal_train >= 10L) {
       lmm_fit <- tryCatch({
-        lme4::lmer(as.formula(formula_str), data = dt[train_idx])
+        lme4::lmer(as.formula(formula_str), data = dt[train_idx],
+                   control = lme4::lmerControl(optimizer = "bobyqa"))
       }, error = function(e) {
-        warning("LMM model failed to converge or encountered an error. Falling back to uncorrected daily feed. Details: ", e$message)
+        warning("LMM Feed Correction: model fitting failed; daily_feed_g left unchanged. Details: ",
+                e$message, call. = FALSE)
         NULL
       })
+    } else {
+      message(sprintf(paste0(
+        "LMM Feed Correction: insufficient training samples (%d rows < %d required, ",
+        "or %d animals < 10 needed for the random intercept); daily_feed_g left unchanged."),
+        sum(train_idx), min_train, n_animal_train))
+      lmm_fit <- NULL
+    }
 
-      if (!is.null(lmm_fit)) {
-        # Extract fixed effect coefficients
-        fixed_eff <- lme4::fixef(lmm_fit)
+    if (!is.null(lmm_fit)) {
+      fixed_eff <- lme4::fixef(lmm_fit)
 
-        # Calculate daily correction value for each record
-        # correction = sum_active ( - beta_i * feature_i )；
-        # β 预期为负（被 flag 时长越长、干净日和越低），故 -β×feature 为正的补偿加回
-        dt[, lmm_correction_g := 0]
-
-        for (feat in active_feats) {
-          if (feat %in% names(fixed_eff)) {
-            beta_val <- fixed_eff[[feat]]
-            # issue #13：补偿语义是「加回被丢的真实采食」，-β×feature 依赖
-            # β<0 先验；共线性/小样本可能估出 β>0，此时该项会把日值往下减。
-            # 跳过该特征并告警，不让方向错误的补偿进入应用环节。
-            if (beta_val > 0) {
-              warning(sprintf(
-                "LMM Feed Correction: coefficient for %s has unexpected sign (beta = %.4f > 0); feature skipped.",
-                feat, beta_val), call. = FALSE)
-              next
-            }
-            dt[, lmm_correction_g := lmm_correction_g - beta_val * get(feat)]
-          }
+      # 文献的应用口径：Correction = Σ(α·ETP + γ·OTD + δ·FID)，**字面 +β̂x**。
+      # 不做单侧截断、不加物理速率封顶、不按系数符号跳过——文献 Table 1 的系数本
+      # 就有正有负（FIV-high +61.40、OTV-high +1750.0），跳过正系数项等于把模型
+      # 换成另一个东西（V1.1.4 的 β>0 守卫与 pmax(0,·) 随本次重写退役）。
+      dt[, lmm_correction_g := 0]
+      for (tm in active_terms) {
+        if (tm %in% names(fixed_eff)) {
+          dt[, lmm_correction_g := lmm_correction_g + fixed_eff[[tm]] * get(tm)]
         }
+      }
 
-        # 物理速率封顶：补偿加回量 ≤ speed_max × 目标类别总时长 / 60，
-        # 即加回部分隐含的采食速率不得超过生理上限（吸收记录级物理规则作先验）；
-        # stack 模式只对噪声置零类的时长封顶（互补口径）。
-        # 下限 0（issue #13）：补偿是「加回」，物理上不为负——pmax 兜底
-        # 防止任何未来路径把日值往下减（减穿 0 会被出口校验静默置 NA）。
-        speed_max <- if (!is.null(ns_cfg$speed_max)) as.numeric(ns_cfg$speed_max) else 170
-        cap_base <- if (stack) dt$noise_dur_total else dt$flagged_dur_total
-        cap_g <- speed_max * cap_base / 60
-        dt[, lmm_correction_g := pmax(0, pmin(lmm_correction_g, cap_g))]
+      # 台账列 + 应用：DFI_corr = DFI_ef + Correction
+      dt[, lmm_ef_g := ef_dfi_g]
+      dt[, daily_feed_g := ef_dfi_g + lmm_correction_g]
 
-        n_corrected <- sum(abs(dt$lmm_correction_g) > 0.001, na.rm = TRUE)
-        n_capped <- sum(cap_base > 0 &
-                          (cap_g - dt$lmm_correction_g) <= 0.001, na.rm = TRUE)
-        mean_abs_corr <- if (n_corrected > 0) {
-          mean(abs(dt$lmm_correction_g[abs(dt$lmm_correction_g) > 0.001]), na.rm = TRUE)
-        } else 0
-        mode_tag <- if (stack) "LMM Feed Correction (stack)" else "LMM Feed Correction"
-        message(sprintf("%s: corrected %d daily records (%d rate-capped), mean |correction| = %.1f g.",
-                        mode_tag, n_corrected, n_capped, mean_abs_corr))
+      # 设备故障天不复活：上游「整天置 NA 交插补」的语义要保住
+      if ("has_feed_out_of_range_today" %in% names(dt)) {
+        dt[has_feed_out_of_range_today %in% TRUE, daily_feed_g := NA_real_]
+      }
 
-        if (stack) {
-          # 加法应用：在物理纠正结果上追加补偿；NA 天不复活（留给插补）
-          dt[!is.na(daily_feed_g), daily_feed_g := daily_feed_g + lmm_correction_g]
-        } else {
-          # 覆写应用：干净记录和 + 统计补偿（台账列 lmm_correction_g 保留在输出中）
-          dt[!is.na(normal_feed_sum), daily_feed_g := normal_feed_sum + lmm_correction_g]
-        }
-      } else {
-        message("LMM Feed Correction: Model fitting failed or skipped, 0 records corrected.")
-        if (!stack) dt[, daily_feed_g := normal_feed_sum]
-        dt[, lmm_correction_g := 0]
+      n_corrected <- sum(abs(dt$lmm_correction_g) > 0.001, na.rm = TRUE)
+      mean_abs_corr <- if (n_corrected > 0) {
+        mean(abs(dt$lmm_correction_g[abs(dt$lmm_correction_g) > 0.001]), na.rm = TRUE)
+      } else 0
+      singular_fit <- isTRUE(lme4::isSingular(lmm_fit, tol = 1e-4))
+      message(sprintf(paste0(
+        "LMM Feed Correction: corrected %d daily records, mean |correction| = %.1f g ",
+        "(train %d rows / %d animals, %d terms, %d dropped%s)."),
+        n_corrected, mean_abs_corr, sum(train_idx), n_animal_train,
+        length(active_terms), length(dropped_terms),
+        if (singular_fit) ", SINGULAR FIT" else ""))
+      if (length(dropped_terms) > 0L) {
+        message("LMM Feed Correction: zero-variance terms dropped: ",
+                paste(dropped_terms, collapse = ", "))
+      }
+      if (singular_fit) {
+        warning(paste0(
+          "LMM Feed Correction: singular fit (random-intercept variance at the boundary); ",
+          "fixed-effect SEs may be anticonservative. Model specification left unchanged to ",
+          "stay faithful to the paper."), call. = FALSE)
       }
     } else {
-      # If training samples are too few, skip LMM inference entirely
-      message(sprintf("LMM Feed Correction: Insufficient valid samples for training (%d <= 30), 0 records corrected.", sum(train_idx)))
-      if (!stack) dt[, daily_feed_g := normal_feed_sum]
-      dt[, lmm_correction_g := 0]
+      # 铁律：拟合失败或样本不足时**什么都不改** daily_feed_g（保留上游的记录级
+      # 结果），绝不回退到 error-free 日和——它系统性丢掉被 flag 记录的采食量，
+      # 正是本方法要消除的偏差。
+      dt[, lmm_ef_g := NA_real_]
+      dt[, lmm_correction_g := NA_real_]
     }
   } else {
     warning("Package 'lme4' is not installed. Ignoring LMM feed correction.")
-    if (!stack) dt[, daily_feed_g := normal_feed_sum]
-    dt[, lmm_correction_g := 0]
+    dt[, lmm_ef_g := NA_real_]
+    dt[, lmm_correction_g := NA_real_]
   }
 
   # ==== 4. 出口生理校验（对所有路径统一执行） ====
   dt <- .finalize_daily_feed(dt, .feed_daily_max_g(ns_cfg))
 
-  # Clean temporary feature columns used in the process（台账列 lmm_correction_g 保留）
-  cols_to_remove <- c("normal_feed_sum", "adg_g",
-                      paste0("has_", err_flags), paste0("dur_", err_flags),
-                      "flagged_dur_total", "noise_dur_total", "daily_feed_g_corrected")
+  # Clean temporary feature columns used in the process
+  #（台账列 lmm_ef_g / lmm_correction_g 保留在输出中，满足
+  #  daily_feed_g == lmm_ef_g + lmm_correction_g 的逐行对账）
+  cols_to_remove <- c("ef_dfi_g", "ef_n_visit", "adg_const_g", "visits_total",
+                      paste0("n_", err_flags), paste0("dur_", err_flags),
+                      paste0("feed_", err_flags),
+                      paste0("etp_", etp_flags), paste0("otd_", otd_flags),
+                      paste0("fid_", fid_flags),
+                      "daily_feed_g_corrected")
   cols_to_remove <- intersect(cols_to_remove, names(dt))
   dt[, (cols_to_remove) := NULL]
 

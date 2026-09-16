@@ -346,4 +346,14 @@ test_that("flag_STL_FI is passed to LMM when enabled", {
   # 这里主要验证不会报错
   expect_true(is.data.frame(result))
   expect_true(nrow(result) > 0)
+
+  # issue #5：STL 在文献式 LMM 里的位置被固定为 **ETP-only 扩展项**——
+  # Casey 2005 的 16 条准则里没有 STL，它是我们外挂的第 10 个 flag；因为
+  # flag_STL_FI 打在当天**全部**记录上，它没有"单条记录时长"可言，故只入 ETP。
+  spec <- ZhenMeasure:::.lmm_covariate_spec()
+  stl <- spec[flag == "flag_STL_FI"]
+  expect_equal(nrow(stl), 1L)
+  expect_equal(stl$kind, "etp")
+  expect_false("otd_flag_STL_FI" %in% spec$term)
+  expect_false("fid_flag_STL_FI" %in% spec$term)
 })
