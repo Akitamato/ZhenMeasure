@@ -84,14 +84,18 @@ SET_SEED        <- 20260826
 variants <- list(
   list(key = "C0", label = "C0_置零不补偿",
        sw = list(use_record_feed_correction = FALSE, use_lmm_feed_correction = FALSE)),
-  list(key = "A",  label = "A_记录级物理纠正(V1.1.1路径)",
+  list(key = "A",  label = "A_记录级物理纠正(出厂默认)",
        sw = list(use_lmm_feed_correction = FALSE)),
-  list(key = "L",  label = "L_文献LMM(Jiao2014, 默认)",
-       sw = list()),
+  list(key = "L",  label = "L_文献LMM(Jiao2014, 可选增强)",
+       # 必须**显式**打开 LMM：在 2026-09-16「A 转正」之前，use_lmm_feed_correction
+       # 的出厂默认是 TRUE，L 臂靠"不传开关"来表示。默认翻成 FALSE 后，空开关
+       # 等于 A，L/Ln 两臂会静默退化成 A 的复制品（三设备逐位相同即此征兆）。
+       sw = list(use_lmm_feed_correction = TRUE)),
   list(key = "Ln", label = "Ln_文献LMM但不截尾",
        # 与 L 只差一件事：协变量截尾关掉（界放宽到 ±Inf），用于测出 Casey 2003
        # 截尾在真实数据上的边际贡献。这是本次重写唯一无法从文献"照抄"的开关。
-       sw = list(lmm_trim_dfie_g = c(-Inf, Inf), lmm_trim_otde_s = c(-Inf, Inf)))
+       sw = list(use_lmm_feed_correction = TRUE,
+                 lmm_trim_dfie_g = c(-Inf, Inf), lmm_trim_otde_s = c(-Inf, Inf)))
 )
 
 # ============================================================
