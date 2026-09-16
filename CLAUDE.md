@@ -61,7 +61,7 @@ Entry point: `run_zhen_measure()` in `R/run_zhen_measure.R`
 
 Since V1.0.0, only `national_standard` is supported. The legacy method has been removed.
 
-`national_standard`: RLM robust regression for per-record weight QC → weighted average daily weight → quadratic growth curve fit with R² threshold; 9 feed anomaly types (negative, too-high, duration/speed flags); LMM correction on daily feed intake; Kalman filter (imputeTS) for weight imputation, Loess/linear regression extrapolation for feed imputation with FCR stage validation. Optional enhancements: STL time-series feed anomaly detection (`use_stl_feed=TRUE`) and Gompertz growth curve weight anomaly detection (`use_gompertz=TRUE`), both disabled by default.
+`national_standard`: RLM robust regression for per-record weight QC → weighted average daily weight → quadratic growth curve fit with R² threshold; 9 feed anomaly types (negative, too-high, duration/speed flags); **daily feed intake LMM correction following Jiao et al. (2014)** — response is error-free DFI, covariates are ETP/OTD/FID per the paper's pre-declared assignment table (`R/zhenm_daily_aggregate_filtered.R`, internals `.lmm_covariate_spec()` / `.lmm_daily_covariates()` / `.lmm_adg_per_animal()`); Kalman filter (imputeTS) for weight imputation, Loess/linear regression extrapolation for feed imputation with FCR stage validation. Optional enhancements: STL time-series feed anomaly detection (`use_stl_feed=TRUE`) and Gompertz growth curve weight anomaly detection (`use_gompertz=TRUE`), both disabled by default.
 
 ### Legacy Retirement (Completed in V1.0.0)
 
@@ -117,7 +117,42 @@ Comparison test scripts are in two folders under `测试/`:
 
 ## Bug Fix Log
 
-### V1.1.4
+### V1.2.0（未发布；分支 `feat/lmm-literature-alignment`）
+
+**日级采食量校正（LMM）整段重写为 Jiao et al. (2014) 的文献实现**（issue #5）。⚠️ **破坏性变更，
+会改变表型结果**。完整说明见 `项目本体/ZhenMeasure/NEWS.md` 的 1.2.0 段，摘要：
+
+- 响应 = error-free DFI（`ef_dfi_g`）；协变量按文献**预先固定的指派表**构造（ETP/OTD/FID 共 18 项）；
+  ADG 改为**每头常数**（个体体重序列 OLS 斜率）；校正按**字面 `+β̂x`** 应用。
+- 删除 V1.1.1–V1.1.4 加的全部护栏：`β>0` 符号守卫、物理封顶 `speed_max×时长/60`、`pmax(0,·)`、`+ visits_n`。
+- **`use_lmm_stacking` 键与整条 stack 分支退役**；**裁定 0**：LMM 门控不再依赖记录级纠正是否成功
+  （`use_lmm_feed_correction` 是日值来源的总开关，`use_record_feed_correction` 降级为对照臂键）。
+  记录级规则 A 因此在默认路径上被旁路，`.correct_feed_records()` 沦为只影响内部列的昂贵空转（用户已知并接受）。
+- 失败**铁律**：拟合失败 / 样本不足 / 缺 `lme4` → `daily_feed_g` 不变，两个台账列置 `NA_real_`，
+  绝不用"误差自由和"兜底。
+- 新增配置键 `lmm_trim_dfie_g = c(0, 3500)` / `lmm_trim_otde_s = c(0, 5000)`
+  （截的是**逐错误类型的累计协变量**，不是响应，也不是日总采食量；对象不同，与日上限 6000 g 不冲突）。
+- 新增台账列 `lmm_ef_g`、`flag_daily_feed_nonpositive`。
+
+**实数据端到端（demo 口径：`test_weight_range = c(200,20)`、`keep_ids = NULL`）**：
+FIRE 4961/20913 天变化（23.7%，ADFI 平均 |Δ| 164 g / 最大 712 g）；
+NEDAP 451/1915 天（23.6%，ADFI 平均 |Δ| 154 g / 最大 317 g）；
+扬翔（`原始数据/南沙`）35647/63805 天（55.9%，ADFI 平均 |Δ| 344 g / 最大 1069 g）。ADG 三设备零变化。
+扬翔 `flag_fcr_stage_invalid` 有 346 行 TRUE→FALSE、78 行 FALSE→TRUE 的分类翻转。
+**回归锁**：`use_lmm_feed_correction = FALSE` 与 V1.1.4 的 A 路径逐值一致（三设备全表 `max|Δ| = 0`）。
+
+**⚠️ 注入式基准的负结果**：变体矩阵改为 C0/A/L/Ln 后，新默认 **L 的 accuracy 三设备三档全部低于
+被它旁路的 A**（FIRE@20% 0.5019 vs 0.5559；NEDAP 0.5470 vs 0.6023；扬翔 0.2991 vs 0.3426），
+bias 也是低估最严重的一档。原因：A 用物理规则把真值近似写回，L 把被 flag 记录整条踢出响应、
+改用回归系数估回，在本基准的损坏模式下系统性估少。`Ln ≡ L`（截尾界在实测数据上不绑定）。
+**这是"对齐文献"的已知代价，不是 bug**；可逆性已验证（`use_lmm_feed_correction = FALSE` 精确复现 A）。
+详见 NEWS.md 1.2.0 段。
+
+### V1.1.4 ⚠️ 本节已被 V1.2.0 整体取代
+
+> **以下「stack 转正」的内容在 V1.2.0 中已全部失效**：`use_lmm_stacking` 键已删除、stack 分支已退役、
+> 默认路径不再跑记录级物理纠正，实测结论（FIRE 0 天改写 / NEDAP 1 天 / 扬翔 869 天）也不再描述当前行为。
+> 保留原文仅作历史记录。
 
 **LMM 叠加校正（`use_lmm_stacking`）转为出厂默认**（issue #5「F 转正」）。分支 `feat/lmm-stacking-default`，尚未合入 main。
 
@@ -157,7 +192,12 @@ Comparison test scripts are in two folders under `测试/`:
 
 **版本号**：Pipeline 启动 banner 的版本号改从 DESCRIPTION 读取（`utils::packageVersion`），此前硬编码为 V1.0.0 且已落后两个版本。
 
-### V1.1.2
+### V1.1.2 ⚠️ 其中两条已被 V1.2.0 回退
+
+> **回退项**：下面「visits_n 协变量」与「物理速率封顶」两条在 V1.2.0 中被删除
+> （文献固定效应无 `visits_n`；物理封顶是文献没有的护栏）。「时长量纲特征」被
+> 「指派表驱动的 OTD/FID」取代，「训练集去截断」被「只对**协变量**截尾」取代。
+> 其余（台账列、开关化）保留。
 
 Phase 1：日级 LMM 兜底校正重构（issue #5，分支 `feat/feed-correction-switches`）。动机：注入式仿真基准证明旧 LMM 设定为净负贡献。四项修复（`zhenm_daily_aggregate_filtered.R` `.apply_feed_lmm_correction()`）：
 - **visits_n 协变量**：异常条数与当日活动强度机械相关，不控制强度则 flag 系数把「当天访问多」误吸收进补偿量。

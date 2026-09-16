@@ -1,3 +1,8 @@
+# ⚠️ 已过时（issue #5 重写）：本脚本内联复刻的是 V1.1.4 及更早的 LMM 口径
+#（响应 normal_feed_sum、特征 has_/dur_、单侧校正），并依赖已不再产出的
+# daily_feed_g_corrected 列。重写后请改用 测试/simulation_benchmark.R（变体
+# C0/A/L/Ln）或直接读日级输出里保留的 lmm_ef_g / lmm_correction_g 台账列。
+# 另：以下路径为 Windows 硬编码，非本机可运行。
 ######### ZhenMeasure LMM 日采食量校正效果可视化与评估测试脚本 #########
 rm(list = ls())
 

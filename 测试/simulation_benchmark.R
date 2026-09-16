@@ -40,7 +40,13 @@ if (!DEVICE %in% names(device_dirs)) {
   stop("未知设备类型：", DEVICE, "（可选 YANGXIANG / FIRE / NEDAP）", call. = FALSE)
 }
 dev_base <- file.path(project_root, "测试/demo/demo_input", device_dirs[[DEVICE]])
-data_path   <- file.path(dev_base, "原始数据")
+# 扬翔的 原始数据/ 下还有 扬翔全数据_一般测试不跑/（19 GB、2151 个 xlsx），
+# 目录名即约定「一般测试不跑」。不加这个分支会把整仓递归读进来。
+data_path   <- if (DEVICE == "YANGXIANG") {
+  file.path(dev_base, "原始数据", "南沙")
+} else {
+  file.path(dev_base, "原始数据")
+}
 format_path <- list.files(file.path(dev_base, "附加信息"),
                           pattern = "[.]json$", full.names = TRUE)[1]
 
@@ -71,17 +77,21 @@ INJECTION_RATES <- c(0.05, 0.10, 0.20)
 TYPE_PROBS      <- c(inflate = 0.45, zero = 0.35, negate = 0.20)
 SET_SEED        <- 20260826
 
+# issue #5 重写后的变体矩阵。旧的 B（V1.1.0 置零+LMM 兜底）与 F（记录级+叠加
+# LMM）随 stack 分支一起退役：新引擎里日级 LMM 独立于记录级纠正运行，
+# 「关记录级纠正」不再等于「换一种 LMM」，B ≡ L。use_lmm_stacking 键已移除，
+# 传它只会得到一条「已移除」的警告。
 variants <- list(
   list(key = "C0", label = "C0_置零不补偿",
        sw = list(use_record_feed_correction = FALSE, use_lmm_feed_correction = FALSE)),
-  list(key = "B",  label = "B_V110行为(置零+LMM)",
-       sw = list(use_record_feed_correction = FALSE)),
-  list(key = "A",  label = "A_V111现状(记录级物理)",
+  list(key = "A",  label = "A_记录级物理纠正(V1.1.1路径)",
+       sw = list(use_lmm_feed_correction = FALSE)),
+  list(key = "L",  label = "L_文献LMM(Jiao2014, 默认)",
        sw = list()),
-  list(key = "D",  label = "D_记录级+FCR锚",
-       sw = list(use_fcr_anchor = TRUE)),
-  list(key = "F",  label = "F_记录级+叠加LMM",
-       sw = list(use_lmm_stacking = TRUE))
+  list(key = "Ln", label = "Ln_文献LMM但不截尾",
+       # 与 L 只差一件事：协变量截尾关掉（界放宽到 ±Inf），用于测出 Casey 2003
+       # 截尾在真实数据上的边际贡献。这是本次重写唯一无法从文献"照抄"的开关。
+       sw = list(lmm_trim_dfie_g = c(-Inf, Inf), lmm_trim_otde_s = c(-Inf, Inf)))
 )
 
 # ============================================================
