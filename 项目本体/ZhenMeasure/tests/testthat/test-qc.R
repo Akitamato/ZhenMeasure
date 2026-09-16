@@ -1,5 +1,12 @@
 # Unit tests for QC functions
 
+# 出厂默认 = 记录级物理纠正（A）：config 默认 use_lmm_feed_correction = FALSE，
+# 文献 LMM 是可选增强（注入基准上 L 三设备三档全面低于 A，见 NEWS.md 1.2.0 段）。
+# 凡要验证 LMM 实现的用例必须**显式**打开它——不能再依赖「不给 config」隐含等于
+# 跑 LMM，那正是默认翻转前的旧语义。只给这一个键即可：use_record_feed_correction
+# 缺键时兜底为 TRUE，与旧默认「两个开关都 TRUE」逐值等价。
+lmm_cfg <- function() list(national_standard = list(use_lmm_feed_correction = TRUE))
+
 test_that("ZhenM_qc_weight_standard runs national_standard method", {
   skip_if_not_installed("data.table")
 
@@ -110,17 +117,63 @@ test_that("ZhenM_standard_to_daily_filtered respects correction switches", {
 
   # 裁定 0 的核心契约：记录级物理纠正**成功**时 LMM 也必须运行。
   # 重写前日级 LMM 只在「记录级纠正关闭或失败」时兜底，而记录级成功恰是默认
-  # 情况——不解耦的话文献 LMM 在出厂配置下永不执行。此处用默认配置（两个开关
-  # 都 TRUE）跑同一份数据，必须看到 LMM 路径的消息（本 fixture 只有 1 头动物，
-  # 会被双门槛挡下并明确报「样本不足」，但这已证明门控被接通）。
+  # 情况——不解耦的话文献 LMM 在任何配置下都永不执行。此处显式打开 LMM 跑同一份
+  # 数据，必须看到 LMM 路径的消息（本 fixture 只有 1 头动物，会被双门槛挡下并
+  # 明确报「样本不足」，但这已证明门控被接通）。
   msgs_def <- capture_messages(
     result_def <- suppressWarnings(ZhenM_standard_to_daily_filtered(
-      data.table::copy(dt), list(national_standard = list())))
+      data.table::copy(dt), lmm_cfg()))
   )
   expect_true(any(grepl("LMM Feed Correction", msgs_def)))
 
   # 反之，关掉 LMM 时记录级纠正照跑（两个开关相互独立，不是串联依赖）
   expect_gt(result_def[record_date == as.Date("2024-01-02"), daily_feed_g], 350)
+})
+
+test_that("出厂默认 = 记录级物理纠正 A（use_lmm_feed_correction 默认 FALSE）", {
+  skip_if_not_installed("lme4")
+
+  # 12 头 × 20 天，规模足以让文献 LMM **真的拟合成功**——因此若哪天默认被误翻回
+  # TRUE，本用例会立刻看到 LMM 消息、日值被覆写、且台账列出现，三重可辨。
+  # 这是 2026-09-16「A 转正」裁定的行为锁（test-config.R 只锁了配置字面值）。
+  rec_list <- list()
+  for (i in 1:12) {
+    for (d in 1:20) {
+      hi <- (d %% 5) == 0   # 每 5 天一次「高速大采食」损坏，A 会把它封顶回 170×时长
+      rec_list[[length(rec_list) + 1]] <- data.table::data.table(
+        animal_id = sprintf("A%03d", i),
+        record_date = as.Date("2024-01-01") + d - 1,
+        feed_g = c(rep(300, 3), if (hi) 5000 else numeric(0)),
+        weight_g = 30000 + i * 500 + d * (180 + 10 * i),
+        duration_sec = c(rep(300, 3), if (hi) 150 else numeric(0)),
+        is_outlier_feed = c(rep(FALSE, 3), if (hi) TRUE else logical(0)),
+        flag_speed_too_fast = c(rep(FALSE, 3), if (hi) TRUE else logical(0))
+      )
+    }
+  }
+  dt <- data.table::rbindlist(rec_list)
+
+  # 默认：走 A，日级 LMM 不运行
+  msgs_def <- capture_messages(
+    r_def <- suppressWarnings(ZhenM_standard_to_daily_filtered(data.table::copy(dt)))
+  )
+  expect_false(any(grepl("LMM", msgs_def)))
+  # LMM 没跑 → 两个台账列**根本不该被创建**（与「跑了但失败」的 NA 是两回事）
+  expect_false(any(c("lmm_ef_g", "lmm_correction_g") %in% names(r_def)))
+
+  # 缺键兜底也必须是 A：手工拼的 config（不走 ZhenM_merge_config）不能静默改用 LMM
+  r_bare <- suppressWarnings(ZhenM_standard_to_daily_filtered(
+    data.table::copy(dt), list(national_standard = list(speed_max = 170))))
+  expect_identical(r_bare$daily_feed_g, r_def$daily_feed_g)
+
+  # 显式打开 LMM：必须真的跑，且日值确实与 A 不同——否则本用例没有区分力
+  msgs_on <- capture_messages(
+    r_on <- suppressWarnings(ZhenM_standard_to_daily_filtered(
+      data.table::copy(dt), lmm_cfg()))
+  )
+  expect_true(any(grepl("LMM Feed Correction", msgs_on)))
+  expect_true(all(c("lmm_ef_g", "lmm_correction_g") %in% names(r_on)))
+  expect_false(isTRUE(all.equal(r_def$daily_feed_g, r_on$daily_feed_g)))
 })
 
 test_that("LMM 文献实现：校正按 +β̂x 应用、台账恒等式成立、出口生理校验独立", {
@@ -172,11 +225,12 @@ test_that("LMM 文献实现：校正按 +β̂x 应用、台账恒等式成立、
   )))
 
   msgs <- capture_messages(
-    res <- suppressWarnings(ZhenM_standard_to_daily_filtered(data.table::copy(dt)))
+    res <- suppressWarnings(ZhenM_standard_to_daily_filtered(
+      data.table::copy(dt), lmm_cfg()))
   )
 
-  # 默认配置（两个开关都 TRUE）下 LMM 必须真的跑起来——这是裁定 0 的核心契约：
-  # 记录级纠正成功不再是 LMM 的门控条件
+  # 显式打开 LMM（use_lmm_feed_correction = TRUE）后它必须真的跑起来——这是
+  # 裁定 0 的核心契约：记录级纠正成功不再是 LMM 的门控条件
   expect_true(any(grepl("LMM Feed Correction: corrected", msgs)))
   expect_false(any(grepl("insufficient training samples|model fitting failed", msgs)))
   # 零变异项被剔除时必须点名，不允许静默改模型规格
@@ -285,7 +339,8 @@ test_that("校正按字面 +β̂x 应用：正系数不被跳过（issue #13 守
   res <- withCallingHandlers(
     {
       msgs <- capture_messages(
-        out <- suppressWarnings(ZhenM_standard_to_daily_filtered(data.table::copy(dt)))
+        out <- suppressWarnings(ZhenM_standard_to_daily_filtered(
+          data.table::copy(dt), lmm_cfg()))
       )
       out
     },
@@ -1105,7 +1160,8 @@ test_that("协变量截尾：只剔训练行、只剔逐类型协变量、不剔
   n_daily <- 12L * 20L + 2L
 
   msgs <- capture_messages(
-    res <- suppressWarnings(ZhenM_standard_to_daily_filtered(data.table::copy(dt)))
+    res <- suppressWarnings(ZhenM_standard_to_daily_filtered(
+      data.table::copy(dt), lmm_cfg()))
   )
   expect_true(any(grepl("LMM Feed Correction: corrected", msgs)))
 
@@ -1137,7 +1193,7 @@ test_that("校正失败时 daily_feed_g 与关掉 LMM 逐值相同（issue #5 �
   }
 
   msgs <- capture_messages(
-    r_lmm <- suppressWarnings(ZhenM_standard_to_daily_filtered(mk()))
+    r_lmm <- suppressWarnings(ZhenM_standard_to_daily_filtered(mk(), lmm_cfg()))
   )
   expect_true(any(grepl("insufficient training samples", msgs)))
   # 台账列明确记为 NA（不是 0）——「没跑」与「跑了但校正量为 0」不能混淆
@@ -1178,7 +1234,8 @@ test_that("设备故障天（flag_feed_out_of_range）不被 LMM 复活（issue 
   dt <- data.table::rbindlist(rec_list)
 
   msgs <- capture_messages(
-    res <- suppressWarnings(ZhenM_standard_to_daily_filtered(data.table::copy(dt)))
+    res <- suppressWarnings(ZhenM_standard_to_daily_filtered(
+      data.table::copy(dt), lmm_cfg()))
   )
   expect_true(any(grepl("LMM Feed Correction: corrected", msgs)))
 
@@ -1215,7 +1272,8 @@ test_that("奇异拟合被报出且不报错（issue #5：只报不治）", {
   dt <- data.table::rbindlist(rec_list)
 
   msgs <- capture_messages(
-    res <- suppressWarnings(ZhenM_standard_to_daily_filtered(data.table::copy(dt)))
+    res <- suppressWarnings(ZhenM_standard_to_daily_filtered(
+      data.table::copy(dt), lmm_cfg()))
   )
   expect_true(any(grepl("SINGULAR FIT", msgs)))
   # 只报不治：不做「奇异时自动降级」的隐形处理，模型规格不变，

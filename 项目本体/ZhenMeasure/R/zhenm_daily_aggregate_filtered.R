@@ -18,9 +18,9 @@
 #'   mechanism switches (`use_record_feed_correction`, `use_lmm_feed_correction`) and the
 #'   LMM covariate truncation bounds (`lmm_trim_dfie_g`, `lmm_trim_otde_s`).
 #'   NULL keeps default behaviour.
-#'   开关依赖（issue #5 重写后）：`use_lmm_feed_correction=TRUE`（默认）时日级文献
-#'   LMM **恒运行**，`daily_feed_g` 由它产生；记录级物理纠正的产物不再进入日值，
-#'   只作内部对照。设 FALSE 则不跑 LMM，`daily_feed_g` 退回记录级纠正的产物。
+#'   开关依赖（issue #5 重写后）：`use_lmm_feed_correction=FALSE`（默认）时不跑 LMM，
+#'   `daily_feed_g` 由记录级物理纠正（A）产生；设 TRUE 则日级文献 LMM **恒运行**，
+#'   `daily_feed_g` 改由它产生，记录级物理纠正的产物不再进入日值，只作内部对照。
 #' @return A daily-level table aggregated by animal and date with daily_weight_g and enhanced feed QC
 #' @export
 ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
@@ -116,15 +116,19 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
   use_record_fix <- if (!is.null(ns_cfg$use_record_feed_correction)) {
     isTRUE(ns_cfg$use_record_feed_correction)
   } else TRUE
+  # 缺键兜底必须与出厂默认一致（FALSE = A）：配置对象是手工拼的、或调用方
+  # 没走 ZhenM_merge_config() 时，这里若退回 TRUE 会静默改用文献 LMM，正是
+  # 「配置没传到就换了路径」那类坑。
   use_lmm_fix <- if (!is.null(ns_cfg$use_lmm_feed_correction)) {
     isTRUE(ns_cfg$use_lmm_feed_correction)
-  } else TRUE
+  } else FALSE
 
   # 被 flag 记录 = 事件真实发生但采食量错误，按 flag 类型用物理规则纠正（而非置零）。
   # 纠正失败或被配置关闭时退回「置零」。
-  # issue #5 重写：本函数的产物 feed_filtered 自本版起**不再进入 daily_feed_g**
-  # （日值由日级文献 LMM 产生），只在内部保留作 A 臂对照；也正因如此，这里
-  # 的成败不再需要向外传递。
+  # feed_filtered 是 **A 臂（记录级物理纠正）的唯一载体**：下面日级聚合直接对它
+  # 求和得 daily_feed_g。use_lmm_feed_correction = FALSE（默认）时它就是日值本身；
+  # TRUE 时它先被算出，随后整体被日级文献 LMM 覆写（见本函数后半的 use_lmm_fix
+  # 门控），届时才只作 A 臂对照。也正因如此，这里的成败不需要向外传递。
   if (!is.null(feed_col) && use_record_fix) {
     corrected <- .correct_feed_records(
       dt, speed_max = if (!is.null(ns_cfg$speed_max)) as.numeric(ns_cfg$speed_max) else 170)
@@ -242,7 +246,7 @@ ZhenM_standard_to_daily_filtered <- function(standard_records, config = NULL) {
   if (use_lmm_fix) {
     result <- .apply_feed_lmm_correction(result, dt, ns_cfg)
   } else {
-    # 关闭日级校正：daily_feed_g 保持记录级物理纠正（A）的产物，
+    # 默认路径：daily_feed_g 保持上面聚合出的记录级物理纠正（A）产物，
     # 仅保留日采食量上限校验（保证各路径口径一致）
     result <- .finalize_daily_feed(result, .feed_daily_max_g(ns_cfg))
   }

@@ -14,9 +14,9 @@ optional FCR anchor correction (`national_standard$use_fcr_anchor`), the correct
 mechanism switches (`use_record_feed_correction`, `use_lmm_feed_correction`) and the
 LMM covariate truncation bounds (`lmm_trim_dfie_g`, `lmm_trim_otde_s`).
 NULL keeps default behaviour.
-开关依赖（issue #5 重写后）：`use_lmm_feed_correction=TRUE`（默认）时日级文献
-LMM **恒运行**，`daily_feed_g` 由它产生；记录级物理纠正的产物不再进入日值，
-只作内部对照。设 FALSE 则不跑 LMM，`daily_feed_g` 退回记录级纠正的产物。}
+开关依赖（issue #5 重写后）：`use_lmm_feed_correction=FALSE`（默认）时不跑 LMM，
+`daily_feed_g` 由记录级物理纠正（A）产生；设 TRUE 则日级文献 LMM **恒运行**，
+`daily_feed_g` 改由它产生，记录级物理纠正的产物不再进入日值，只作内部对照。}
 }
 \value{
 A daily-level table aggregated by animal and date with daily_weight_g and enhanced feed QC

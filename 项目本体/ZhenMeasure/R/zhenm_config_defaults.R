@@ -90,14 +90,18 @@ ZhenM_default_config <- function(qc_method = "national_standard") {
 
     # 校正机制开关。日级校正已按 Jiao et al. (2014) 重写（issue #5），
     # 依赖关系随之改变：
-    #   use_lmm_feed_correction = TRUE（默认）→ 日级文献 LMM **恒运行**，
-    #     daily_feed_g 由它产生（= error-free 日和 + Σβ̂x）。此时
+    #   use_lmm_feed_correction = FALSE（默认）→ 不跑 LMM，daily_feed_g 由
+    #     记录级物理纠正（A）产生，仅保留出口日上限校验。
+    #   use_lmm_feed_correction = TRUE → 日级文献 LMM **恒运行**，
+    #     daily_feed_g 改由它产生（= error-free 日和 + Σβ̂x）。此时
     #     use_record_feed_correction 的产物不再进入日值，只留在内部列里
     #     作对照臂。
-    #   use_lmm_feed_correction = FALSE → 不跑 LMM，daily_feed_g 退回记录级
-    #     物理纠正（A）的产物，仅保留出口日上限校验。用于消融对照。
+    # 默认取 A 而非文献 LMM 的依据：注入式基准上 L 的 accuracy 在三设备 ×
+    # 三档注入率共 9 格中全面低于 A（FIRE@20% 0.5019 vs 0.5559、NEDAP
+    # 0.5470 vs 0.6023、扬翔 0.2991 vs 0.3426），bias 也是低估最严重的一档。
+    # 文献实现保留为**可选增强**，改这一个键即可切换。详见 NEWS.md 1.2.0 段。
     use_record_feed_correction = TRUE,
-    use_lmm_feed_correction = TRUE,
+    use_lmm_feed_correction = FALSE,
 
     # LMM 协变量截尾界（Casey 2003，经 Jiao et al. 2016 转述）：拟合前剔除
     # 越界的**训练行**以降低极端值带来的偏差。注意被截的对象是「某一类错误
@@ -141,9 +145,9 @@ ZhenM_default_config <- function(qc_method = "national_standard") {
   defined <- list(
     use_lmm_stacking = paste0(
       "config 键 national_standard$use_lmm_stacking 已被移除，设置不会生效。",
-      "日级 LMM 采食量校正已按 Jiao et al. (2014) 重写为默认路径，",
-      "不再区分「兜底」与「叠加」两种模式。如需关闭日级校正，",
-      "请使用 national_standard$use_lmm_feed_correction = FALSE。"
+      "日级 LMM 采食量校正已按 Jiao et al. (2014) 重写，",
+      "不再区分「兜底」与「叠加」两种模式。该实现默认关闭，",
+      "如需启用请设 national_standard$use_lmm_feed_correction = TRUE。"
     )
   )
   defined[intersect(names(defined), names(user_config$national_standard))]

@@ -46,10 +46,11 @@ test_that("national_standard config has required parameters", {
   expect_true(is.data.frame(cfg$fcr_ranges))
   expect_equal(nrow(cfg$fcr_ranges), 9)
 
-  # 校正机制开关默认开启（issue #5 重写后：use_lmm_feed_correction 是 daily_feed_g
-  # 来源的总开关，use_record_feed_correction 降级为对照臂开关）
+  # 校正机制开关默认：daily_feed_g 走记录级物理纠正（A），文献 LMM 是可选增强。
+  # 注入式基准上 L 在三设备 × 三档注入率上全面低于 A（NEWS.md 1.2.0 段），
+  # 故默认关闭；use_record_feed_correction 保持开启，它是 A 路径的前提。
   expect_true(cfg$use_record_feed_correction)
-  expect_true(cfg$use_lmm_feed_correction)
+  expect_false(cfg$use_lmm_feed_correction)
 
   # LMM 协变量截尾界（Casey 2003）：对象是逐错误类型的**累计协变量**，
   # 不是日总采食量，也不是响应
@@ -77,11 +78,11 @@ test_that("已移除的 use_lmm_stacking 键给出明确提示（issue #5 重写
 
   # 该键不生效：与 issue #17 的其它未知键一致，modifyList 仍会把它塞进列表，
   # 但全仓已无读取处（grep use_lmm_stacking 只剩本助手与测试）。此处锁住的是
-  # 「没有任何开关被它带偏」——传 TRUE 后日级校正开关仍是默认值。
+  # 「没有任何开关被它带偏」——传 TRUE 后日级校正开关仍是默认值（FALSE = A）。
   merged <- suppressWarnings(ZhenM_merge_config(
     list(national_standard = list(use_lmm_stacking = TRUE)), "national_standard"
   ))
-  expect_true(merged$national_standard$use_lmm_feed_correction)
+  expect_false(merged$national_standard$use_lmm_feed_correction)
 
   # 反向锁：真正的拼写错误仍要被点名
   expect_warning(

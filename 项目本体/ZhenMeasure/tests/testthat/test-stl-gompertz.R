@@ -339,7 +339,7 @@ test_that("flag_STL_FI is passed to LMM when enabled", {
   dt[animal_id == "A001" & record_date == as.Date("2024-01-15"), flag_STL_FI := TRUE]
   dt[animal_id == "A001" & record_date == as.Date("2024-02-01"), flag_STL_FI := TRUE]
 
-  # 运行日聚合（包含 LMM 校正）
+  # 运行日聚合（出厂默认走记录级物理纠正 A；本用例只验证不报错与协变量指派表）
   result <- ZhenM_standard_to_daily_filtered(dt)
 
   # 如果 lme4 可用，LMM 应该处理 flag_STL_FI
