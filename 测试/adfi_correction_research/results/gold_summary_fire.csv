@@ -1,0 +1,2 @@
+device,n_animals,n_grid_rows,n_universe,n_observed,n_gated,n_outside,n_outside_fullrow,n_outside_novisit,pct_observed_of_grid,max_abs_diff_observed
+FIRE,211,21096,20796,20793,3,300,92,208,98.56,0

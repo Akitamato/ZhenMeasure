@@ -15,40 +15,40 @@
 #   bias     = (Σest − Σtrue) / Σtrue       （方向性：+高估 / −低估）
 #   另报：分损坏类型受影响天的恢复率、个体 ADFI 相关度、可用天覆盖
 #
-# 变体矩阵（与 compare_correction_variants.R 同一套开关）：
-#   E_inj 不校正（污染原样，脚本内直接按天求和，不走 Step5 校正门控）
-#   C0 置零不补偿  B 置零+LMM  A 记录级物理  D 记录级+FCR锚
+# 变体矩阵：C0 / A / L / Ln，另加脚本内联的 E_inj 与 G_cens，共六臂。
+#   成绩单见 GitHub issue #47。
 #
 # 运行：/data6/home/yhliao/00_Software/conda/miniconda3/envs/yhliao_R/bin/Rscript 测试/simulation_benchmark.R [YANGXIANG|FIRE|NEDAP]
 #   设备参数缺省为 YANGXIANG；泛化复测时传 FIRE / NEDAP（数据在 demo_input 对应厂商目录）
+#
+# ⚠️ 本脚本的骨架（设备解析 / Steps 1-4 / 纯净世界 / inject_errors / eval_metrics）
+#    已抽到 测试/adfi_correction_research/R/skeleton.R，供问题 B 轨复用（一套骨架、
+#    两个注入器）。抽骨架当时留下的验收门是 01_smoke_skeleton.R：同设备同种子必须
+#    逐字节复现 results/baselines/ 里的基线。**改动 skeleton.R 前先想清楚会不会破坏它。**
+#
+# ⚠️ eval_metrics() 只对**问题 A** 成立（注入器从不删行，所以「以臂输出为锚」的合并
+#    侥幸正确）。问题 B 的臂会删整天，必须用 adfi_correction_research/R/eval_b.R
+#    的 eval_metrics_b()。详见那里的说明。
 
 rm(list = ls())
 options(scipen = 999)
 
+# 骨架里包含 library(data.table)、options(scipen) 与全部共享函数
 script_dir <- tryCatch(dirname(sys.frame(1)$ofile), error = function(e) "")
 project_root <- if (script_dir == "") getwd() else normalizePath(file.path(script_dir, ".."))
-
-library(data.table)
-pkg_dir <- file.path(project_root, "项目本体/ZhenMeasure")
-pkgload::load_all(pkg_dir, quiet = TRUE, export_all = TRUE)
+source(file.path(project_root, "测试/adfi_correction_research/R/skeleton.R"))
+pkgload::load_all(file.path(project_root, "项目本体/ZhenMeasure"),
+                  quiet = TRUE, export_all = TRUE)
 
 # --- 设备选择与路径 ---
 dev_args <- commandArgs(trailingOnly = TRUE)
 DEVICE <- if (length(dev_args) >= 1) toupper(dev_args[1]) else "YANGXIANG"
-device_dirs <- c(YANGXIANG = "YANGXIANG_扬翔", FIRE = "FIRE_奥斯本", NEDAP = "Nedap_睿保乐")
 if (!DEVICE %in% names(device_dirs)) {
   stop("未知设备类型：", DEVICE, "（可选 YANGXIANG / FIRE / NEDAP）", call. = FALSE)
 }
-dev_base <- file.path(project_root, "测试/demo/demo_input", device_dirs[[DEVICE]])
-# 扬翔的 原始数据/ 下还有 扬翔全数据_一般测试不跑/（19 GB、2151 个 xlsx），
-# 目录名即约定「一般测试不跑」。不加这个分支会把整仓递归读进来。
-data_path   <- if (DEVICE == "YANGXIANG") {
-  file.path(dev_base, "原始数据", "南沙")
-} else {
-  file.path(dev_base, "原始数据")
-}
-format_path <- list.files(file.path(dev_base, "附加信息"),
-                          pattern = "[.]json$", full.names = TRUE)[1]
+dev <- resolve_device(DEVICE, project_root)
+data_path   <- dev$data_path
+format_path <- dev$format_path
 
 # G_cens 保守化参数（CLI 可选覆盖）：Rscript sim.R <DEVICE> <quantile> <shrink>
 #   quantile：分位数删失界（0~1，传入 0 表示退回纯物理界）；shrink：复活量折扣
@@ -71,11 +71,9 @@ cat(sprintf(">>> 设备=%s | G 保守化：quantile=%s shrink=%.2f\n",
             G_SHRINK))
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
-base_ns <- list(test_weight_range = c(200, 20))   # 南沙脚本既有用法，各变体一致
-
-INJECTION_RATES <- c(0.05, 0.10, 0.20)
-TYPE_PROBS      <- c(inflate = 0.45, zero = 0.35, negate = 0.20)
-SET_SEED        <- 20260826
+# base_ns / INJECTION_RATES / TYPE_PROBS / SET_SEED 均由 skeleton.R 提供
+# cfg_base：与 run_steps1_4() 内部同一份，污染数据重跑 feed QC 时复用（原 :324）
+cfg_base <- make_base_config(base_ns)
 
 # issue #5 重写后的变体矩阵。旧的 B（V1.1.0 置零+LMM 兜底）与 F（记录级+叠加
 # LMM）随 stack 分支一起退役：新引擎里日级 LMM 独立于记录级纠正运行，
@@ -99,102 +97,9 @@ variants <- list(
 )
 
 # ============================================================
-# 共享 Steps 1-4：读一次数据 + 三层 QC
+# 本脚本独占（骨架不带）：G_cens 臂
+# 原文在 :198-313。抽骨架时未搬走——它只服务 A 轨的 G_cens 臂，B 轨用不上。
 # ============================================================
-cat(">>> Steps 1-4：读取 + Overall/Weight/Feed QC ...\n")
-t0 <- Sys.time()
-standard_data <- ZhenM_read_data(data_path, DEVICE, format_path, NULL)
-cfg_base <- ZhenM_merge_config(list(national_standard = base_ns))
-qc_result <- ZhenM_qc_overall(standard_data, config = cfg_base, logger = NULL, keep_ids = NULL)
-standard_data <- qc_result$records
-standard_data <- ZhenM_qc_weight_standard(standard_data, "national_standard", cfg_base, NULL)
-standard_data <- ZhenM_qc_feed_standard(standard_data, "national_standard", cfg_base, NULL)
-cat(sprintf("    完成，耗时 %.1f 秒；QC 后记录 %d 行、个体 %d 头\n\n",
-            as.numeric(difftime(Sys.time(), t0, units = "secs")),
-            nrow(standard_data), uniqueN(standard_data$animal_id)))
-
-# ============================================================
-# 构建纯净世界：无任何 feed flag 且 feed_g > 0 的记录 = 真值
-# ============================================================
-feed_flag_cols <- intersect(
-  c("is_outlier_feed", "flag_feed_out_of_range", "flag_feed_negative", "flag_feed_too_high",
-    "flag_duration_negative", "flag_duration_too_long", "flag_duration_zero_with_feed",
-    "flag_speed_too_slow", "flag_speed_too_fast", "flag_speed_extreme_low_feed",
-    "flag_speed_zero_long_duration", "flag_STL_FI"),
-  names(standard_data))
-
-any_flag <- standard_data[, Reduce(`|`, lapply(.SD, function(x) x %in% TRUE)), .SDcols = feed_flag_cols]
-# 注意：保留全部原始列——Step5 的日聚合与 FCR 锚需要体重列，瘦表会让 D 变体退化
-clean_dt <- data.table::copy(standard_data[!any_flag & !is.na(feed_g) & feed_g > 0])
-cat(sprintf(">>> 纯净世界：%d 条干净记录（占 QC 后 %.1f%%），%d 头、%d 动物天\n",
-            nrow(clean_dt), 100 * nrow(clean_dt) / nrow(standard_data),
-            uniqueN(clean_dt$animal_id), uniqueN(clean_dt[, paste(animal_id, record_date)])))
-
-# 真实日和（ground truth）
-truth_daily <- clean_dt[, .(true_feed = sum(feed_g)), by = .(animal_id, record_date)]
-
-rm(standard_data, qc_result, any_flag); invisible(gc(verbose = FALSE))
-
-# ============================================================
-# 注入函数：对 copy 施加已知损坏，返回（污染数据, 受影响日×类型表）
-# ============================================================
-inject_errors <- function(dt_clean, rate) {
-  dt <- data.table::copy(dt_clean)
-  dt[, feed_original := feed_g]   # 先存真值再破坏
-  set.seed(SET_SEED + round(rate * 1000))
-
-  n_inj <- floor(nrow(dt) * rate)
-  idx <- sample.int(nrow(dt), n_inj)
-  types <- sample(names(TYPE_PROBS), n_inj, replace = TRUE, prob = TYPE_PROBS)
-
-  i_inf <- idx[types == "inflate"]
-  i_zer <- idx[types == "zero"]
-  i_neg <- idx[types == "negate"]
-  dt[i_inf, feed_g := feed_g * runif(.N, 1.5, 3.0)]
-  dt[i_zer, feed_g := 0]
-  dt[i_neg, feed_g := -feed_g]
-  dt[idx, injected_type := types]
-
-  # 受影响 (动物天 × 损坏类型) 明细；该天完整真值由 truth_daily 提供
-  affected <- dt[!is.na(injected_type),
-                 .(n_injected_rec = .N,
-                   true_injected_sum = sum(feed_original)),
-                 by = .(animal_id, record_date, inj_types = injected_type)]
-
-  dt[, feed_original := NULL]
-  list(dt_injected = dt, affected = affected, n_inj = n_inj)
-}
-
-# ============================================================
-# 主循环：rate × variant
-# ============================================================
-eval_metrics <- function(daily_est, truth, affected = NULL) {
-  m <- merge(daily_est[, .(animal_id, record_date, est = daily_feed_g)],
-             truth, by = c("animal_id", "record_date"), all.x = TRUE)
-  m <- m[!is.na(true_feed)]
-  m[, est_filled := data.table::fcoalesce(est, 0)]
-  acc  <- 1 - sum(abs(m$est_filled - m$true_feed)) / sum(m$true_feed)
-  bias <- (sum(m$est_filled) - sum(m$true_feed)) / sum(m$true_feed)
-  covg <- mean(!is.na(m$est))
-
-  # 个体层 ADFI 相关度
-  by_animal <- m[, .(est_adfi = mean(est_filled), true_adfi = mean(true_feed)), by = animal_id]
-  r_pearson <- suppressWarnings(cor(by_animal$est_adfi, by_animal$true_adfi))
-  rho_sp <- suppressWarnings(cor(by_animal$est_adfi, by_animal$true_adfi,
-                                 method = "spearman"))
-
-  # 分损坏类型的受影响天恢复率（est/true，按 动物天×类型 行计）
-  type_tab <- NULL
-  if (!is.null(affected)) {
-    aff <- merge(affected, m[, .(animal_id, record_date, est_filled, true_feed)],
-                 by = c("animal_id", "record_date"), all.x = TRUE)
-    aff[, est_filled := data.table::fcoalesce(est_filled, 0)]
-    type_tab <- aff[, .(ratio_mean = mean(est_filled / true_feed), n_days = .N),
-                    by = inj_types]
-  }
-  list(acc = acc, bias = bias, coverage = covg, r = r_pearson, rho = rho_sp, by_type = type_tab)
-}
-
 # ============================================================
 # Phase 2 PoC：右删失 Tobit + lme4 的 EM 迭代（issue #5 步骤2）
 # 被物理规则「噪声置零」的记录，其真实采食量 ∈ (0, speed_max×时长/60]，
@@ -312,6 +217,19 @@ eval_metrics <- function(daily_est, truth, affected = NULL) {
   daily[]
 }
 
+# ============================================================
+# 共享 Steps 1-4 + 纯净世界（骨架）
+# ============================================================
+standard_data <- run_steps1_4(data_path, DEVICE, format_path, base_ns)
+cw <- build_clean_world(standard_data)
+clean_dt <- cw$clean_dt
+truth_daily <- cw$truth_daily
+
+rm(standard_data, cw); invisible(gc(verbose = FALSE))
+
+# ============================================================
+# 主循环：rate × variant（骨架提供 inject_errors / eval_metrics）
+# ============================================================
 results <- list(); type_rows <- list()
 for (rate in INJECTION_RATES) {
   cat(sprintf(">>> 注入率 %.0f%% ...\n", rate * 100))

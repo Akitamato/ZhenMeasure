@@ -63,3 +63,6 @@ ZhenMeasure_V1.0.0_PPT.md
 # 全量原始数据（体积大，一般测试不跑；仅保留本地）
 # 注：内容虽已被上面的 *.xlsx 覆盖，此处显式列出以免扩展名规则收窄后意外入库
 测试/demo/demo_input/YANGXIANG_扬翔/原始数据/扬翔全数据_一般测试不跑/
+
+# ADFI 校正研究模块：代码、汇总表与基线入库；逐次运行的原始产物不入库
+测试/adfi_correction_research/results/runs/
