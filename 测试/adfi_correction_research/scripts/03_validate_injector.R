@@ -83,6 +83,33 @@ for (pt in names(RUN_LEN)) {
         res$n_target - res$n_realised < L)
 }
 
+# run 的**原子性**：注入标记的连续段必须恰好 L 天。
+# 相邻两个 run 首尾相接（起点恰在前一个的 d+L）时，`.pick_runs` 的冲突判据若只写
+# `< L` 会放行，两个 2d run 合并成 4 天缺口——**pattern 名字就不再等于缺口长度**，
+# 分 pattern 的失效归因会撒谎。判据必须是 `< L + 1L`（至少隔一天）。
+for (pt in names(RUN_LEN)) {
+  L <- RUN_LEN[[pt]]
+  gm <- combos[[paste(pt, "missing")]]$gold_marked
+  seg <- gm[order(animal_id, record_date)][, {
+    r <- rle(injected)
+    list(len = r$lengths[r$values])
+  }, by = animal_id]
+  check(sprintf("%-4s 注入标记的连续段长度全部 == %d（%d 段，实测 %s）",
+                pt, L, nrow(seg),
+                if (nrow(seg) == 0) "无" else
+                  sprintf("%d..%d", min(seg$len), max(seg$len))),
+        nrow(seg) > 0 && all(seg$len == L))
+  # 诊断（不断言）：值层面的 NA 缺口分布。若某 run 与既有的无访问天相邻，NA 缺口会
+  # 长于 L —— 这是语料固有的，不是注入器的缺陷；报出来免得日后误判。
+  gap <- gm[order(animal_id, record_date)][, {
+    r <- rle(is.na(daily_feed_g))
+    list(len = r$lengths[r$values])
+  }, by = animal_id]
+  n_gt <- if (nrow(gap)) sum(gap$len > L) else 0L
+  cat(sprintf("       └ NA 缺口 %d 段，其中长于 %d 的 %d 段（run 与既有空洞相邻所致）\n",
+              nrow(gap), L, n_gt))
+}
+
 # ============================================================
 # ② 比例与值语义
 # ============================================================

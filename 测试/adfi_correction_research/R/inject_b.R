@@ -65,6 +65,11 @@ inject_seed <- function(rate, pattern, base = SET_SEED) {
 }
 
 # 从候选起点里贪心挑互不重叠的 run，选满 quota 天为止
+#
+# 冲突判据是 `abs(dnum - d) < L + 1L`，不是 `< L`：起点恰在 d + L 时，两个 run
+# 首尾相接（[d, d+L-1] 与 [d+L, d+2L-1]）会合并成一条长度 2L 的缺口，
+# 于是「2d 模式」实际造出 4 天缺口——**pattern 名字就不再等于缺口长度**，
+# 分 pattern 的失效归因会撒谎。留一天间隔，run 才是原子的。
 .pick_runs <- function(starts, quota, L) {
   if (quota <= 0 || nrow(starts) == 0) return(starts[0])
   s <- data.table::copy(starts)[order(animal_id, record_date)]
@@ -76,7 +81,7 @@ inject_seed <- function(rate, pattern, base = SET_SEED) {
   for (i in seq_len(nrow(s))) {
     if (n_days + L > quota) break
     a <- s$animal_id[i]; d <- s$dnum[i]
-    clash <- used[animal_id == a & abs(dnum - d) < L]
+    clash <- used[animal_id == a & abs(dnum - d) < L + 1L]
     if (nrow(clash) > 0) next
     taken[[length(taken) + 1L]] <- data.table::data.table(
       animal_id = a, dnum = d + (0:(L - 1L)))
